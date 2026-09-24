@@ -21,6 +21,7 @@ import {
   forwardOpencodeClientHeaders,
   resolveOpencodeCliDefaults,
 } from "../utils/opencodeHeaders.ts";
+import { projectOpencodeSessionBody } from "../utils/opencodeSessionIdentity.ts";
 import {
   listForRequest,
   releaseRequestList,
@@ -614,10 +615,9 @@ export class OpencodeExecutor extends BaseExecutor {
       // through the accounts is the retry). Avoids an unbounded loop on a
       // persistently malformed upstream.
       const emptyRejectionBudget = accounts.length === 1 ? 1 : 0;
-      // Tried set: proxy keys already proven unusable for this request's
-      // model (geo-blocked, or transient 5xx). Request-local only — nothing
-      // persists past execute().
-      const geoTriedProxyKeys = new Set<string>();
+      // Tried sets, request-local only: geo/transient + 429 no-replay keys.
+      const geoTriedProxyKeys = new Set<string>(),
+        rateLimitedProxyKeys = new Set<string>();
       // Opt-in (PROXY_SKIP_RECENTLY_FAILED, default off): members the provider just refused
       // (received refusal or refused TCP probe) are skipped. Off = plain rotation.
       const skipRecentlyFailed = isProxySkipRecentlyFailedEnabled();
@@ -645,7 +645,7 @@ export class OpencodeExecutor extends BaseExecutor {
           if (a.proxy === null) return !directTried || geoTriedProxyKeys.size === 0;
           if (skipRecentlyFailed && isProxyAvoided(proxyEgressKey(a.proxy))) return false;
           const k = proxyKeyOf(a.proxy);
-          return k !== null && !geoTriedProxyKeys.has(k);
+          return k !== null && !geoTriedProxyKeys.has(k) && !rateLimitedProxyKeys.has(k);
         };
         let account = this.pickAccountWith(accounts, isProxiedCandidate);
         if (attributionOn) {
@@ -678,12 +678,11 @@ export class OpencodeExecutor extends BaseExecutor {
         if (
           !isMonoRetryOwed &&
           lastResult !== null &&
-          geoTriedProxyKeys.size > 0 &&
+          geoTriedProxyKeys.size + rateLimitedProxyKeys.size > 0 &&
           !isProxiedCandidate(account) &&
           !(account.proxy === null && !directTried)
         ) {
-          // Geo exhaustion (last was 403/451) → surface as-is, no success mark.
-          // Transient exhaustion (last was 5xx) → same: surface last as-is.
+          // Geo/transient exhaustion → surface as-is, no success mark.
           // Any other last status (e.g. 429 after 403s) → skip without a call.
           if (lastWasGeo || lastWasTransient) break;
           continue;
@@ -816,6 +815,8 @@ export class OpencodeExecutor extends BaseExecutor {
           const status = result.response.status;
           if (status === 429) {
             markCooldown(account);
+            const rateKey = proxyKeyOf(account.proxy);
+            if (rateKey !== null) rateLimitedProxyKeys.add(rateKey);
             const setAsideMs = egressPacing.noteRefusedMember(account.proxy, skipRecentlyFailed);
             // Opt-in (#13657): a 429 that names a real rate limit stops the wave and
             // the real upstream 429 is returned untouched (body, Retry-After, quota
@@ -1136,30 +1137,12 @@ export class OpencodeExecutor extends BaseExecutor {
       gatedScope
     );
 
-    this._clientSession = clientSuppliedOpencodeSession(clientHeaders);
+    this._clientSession = clientSuppliedOpencodeSession(clientHeaders, body);
     if (clientHeaders || cliDefaults) {
-      const b = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
       forwardOpencodeClientHeaders(headers, clientHeaders ?? {}, {
         synthesizeRequestId: true,
         cliDefaults,
-        sessionBody: b
-          ? {
-              model: typeof b.model === "string" ? b.model : undefined,
-              system: b.system,
-              messages: Array.isArray(b.messages)
-                ? (b.messages as Array<{ role?: string; content?: unknown }>)
-                : undefined,
-              // The Responses surface carries the conversation under `input`; without it the
-              // fingerprint collapses to the model alone and every conversation on that model
-              // would share one upstream session.
-              input: Array.isArray(b.input)
-                ? (b.input as Array<{ role?: string; content?: unknown }>)
-                : undefined,
-              tools: Array.isArray(b.tools)
-                ? (b.tools as Array<{ name?: string; function?: { name?: string } }>)
-                : undefined,
-            }
-          : undefined,
+        sessionBody: projectOpencodeSessionBody(body),
       });
     }
 
