@@ -7,7 +7,8 @@
  * grok-cli is a same-format Responses lane, so the Chat translator's
  * custom → function conversion (#1007) never runs here.
  *
- * Convert custom tools to function tools with the same `{ input: string }` schema
+ * Convert custom tools, top-level and inside `namespace` groups (Codex lite mode's
+ * `functions.exec`), to function tools with the same `{ input: string }` schema
  * the Chat translator uses, convert custom-tool history items, and turn Grok's
  * function calls on those tools back into `custom_tool_call` items. Argument
  * deltas are decoded as they stream (`{"input":"…` → raw input) and re-emitted as
@@ -18,7 +19,7 @@
 
 type JsonRecord = Record<string, unknown>;
 
-/** Converted custom tools by name, with the client's original definition. */
+/** Converted custom tools by customToolKey(), with the client's original definition. */
 export type GrokBuildCustomTools = Map<string, JsonRecord>;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -27,6 +28,12 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function nonEmptyName(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** A namespaced custom tool must not capture a top-level function of the same name. */
+function customToolKey(namespace: unknown, name: string): string {
+  const ns = nonEmptyName(namespace);
+  return ns ? `${ns}\u0000${name}` : name;
 }
 
 function toFunctionTool(tool: JsonRecord, name: string): JsonRecord {
@@ -72,13 +79,40 @@ function convertHistoryItem(item: unknown): unknown {
 }
 
 /**
- * Return a copy of a Responses request body with custom tools, a custom
- * `tool_choice` and custom-tool history items converted to their function forms
- * (history also on follow-up turns that no longer declare the tool). The input
- * body is never mutated: combo fallback re-dispatches it to targets that accept
- * custom tools natively. A custom tool whose name is already used by another
- * tool is left alone rather than duplicating the name. `customTools` is null
- * when no tool was converted.
+ * Convert the custom members of one `namespace` group. The namespace step flattens the
+ * converted functions afterwards and restores `{namespace, name}` on Grok's calls first,
+ * so the restore here matches them by namespace and leaf name.
+ */
+function convertNamespaceTool(tool: JsonRecord, customTools: GrokBuildCustomTools): JsonRecord {
+  const namespace = nonEmptyName(tool.name);
+  if (!namespace || !Array.isArray(tool.tools)) return tool;
+  const siblingNames = new Set(
+    tool.tools
+      .filter((member) => isRecord(member) && member.type !== "custom")
+      .map((member) => (member as JsonRecord).name)
+  );
+  let changed = false;
+  const members = tool.tools.map((member) => {
+    if (!isRecord(member) || member.type !== "custom") return member;
+    const name = nonEmptyName(member.name);
+    if (!name || siblingNames.has(name)) return member;
+    const key = customToolKey(namespace, name);
+    if (customTools.has(key)) return member;
+    customTools.set(key, member);
+    changed = true;
+    return toFunctionTool(member, name);
+  });
+  return changed ? { ...tool, tools: members } : tool;
+}
+
+/**
+ * Return a copy of a Responses request body with custom tools (also those inside
+ * `namespace` groups), a custom `tool_choice` and custom-tool history items
+ * converted to their function forms (history also on follow-up turns that no
+ * longer declare the tool). The input body is never mutated: combo fallback
+ * re-dispatches it to targets that accept custom tools natively. A custom tool
+ * whose name is already used by another tool is left alone rather than
+ * duplicating the name. `customTools` is null when no tool was converted.
  */
 export function convertGrokBuildCustomTools(body: unknown): {
   body: unknown;
@@ -97,6 +131,8 @@ export function convertGrokBuildCustomTools(body: unknown): {
         .map((tool) => (tool as JsonRecord).name)
     );
     const tools = body.tools.map((tool) => {
+      if (isRecord(tool) && tool.type === "namespace")
+        return convertNamespaceTool(tool, customTools);
       if (!isRecord(tool) || tool.type !== "custom") return tool;
       const name = nonEmptyName(tool.name);
       if (!name || otherNames.has(name) || customTools.has(name)) return tool;
@@ -132,7 +168,7 @@ function isCustomToolCall(item: unknown, customTools: GrokBuildCustomTools): ite
     isRecord(item) &&
     item.type === "function_call" &&
     typeof item.name === "string" &&
-    customTools.has(item.name)
+    customTools.has(customToolKey(item.namespace, item.name))
   );
 }
 

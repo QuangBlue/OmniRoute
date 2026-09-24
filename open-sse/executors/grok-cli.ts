@@ -22,6 +22,7 @@ import {
   type ExecutorLog,
   type ProviderCredentials,
 } from "./base.ts";
+import { hoistGrokBuildAdditionalTools } from "./grokCliAdditionalTools.ts";
 import {
   convertGrokBuildCustomTools,
   restoreGrokBuildCustomToolCalls,
@@ -255,11 +256,12 @@ export class GrokCliExecutor extends BaseExecutor {
   }
 
   async execute(input: ExecuteInput) {
-    // Grok Build rejects Responses freeform `custom` tools (e.g. Codex apply_patch) and
-    // `namespace` tool groups (Codex CLI MCP tools). Custom tools convert first so a
-    // replayed namespaced custom_tool_call becomes a function_call the namespace step
-    // then renames to its flattened wire name.
-    const converted = convertGrokBuildCustomTools(input.body);
+    // Grok Build rejects `additional_tools` input items (Codex lite mode), freeform `custom`
+    // tools (e.g. Codex apply_patch, lite mode's namespaced `exec`) and `namespace` tool
+    // groups (Codex CLI MCP tools). Additional tools merge into `tools` first; custom tools
+    // then convert, also inside namespaces, so the namespace step flattens them and renames
+    // a replayed namespaced custom_tool_call to its wire name. Restore runs in reverse.
+    const converted = convertGrokBuildCustomTools(hoistGrokBuildAdditionalTools(input.body));
     const { customTools } = converted;
     const { body, identityMap } = flattenGrokBuildNamespaceTools(converted.body);
     const tools = (body as { tools?: unknown } | null)?.tools;
