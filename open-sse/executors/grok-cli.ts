@@ -16,7 +16,16 @@ import {
   GROK_BUILD_TOKEN_URL,
 } from "../config/grokBuild.ts";
 import { resolvePublicCred } from "../utils/publicCreds.ts";
-import { BaseExecutor, type ExecutorLog, type ProviderCredentials } from "./base.ts";
+import {
+  BaseExecutor,
+  type ExecuteInput,
+  type ExecutorLog,
+  type ProviderCredentials,
+} from "./base.ts";
+import {
+  convertGrokBuildCustomTools,
+  restoreGrokBuildCustomToolCalls,
+} from "./grokCliCustomTools.ts";
 
 const GROK_BUILD_MAX_TOOLS = 200;
 const GROK_BUILD_REASONING_EFFORT_SET = new Set(GROK_BUILD_SUPPORTED_REASONING_EFFORTS);
@@ -214,6 +223,18 @@ export class GrokCliExecutor extends BaseExecutor {
     _credentials: ProviderCredentials | null = null
   ) {
     return GROK_BUILD_RESPONSES_URL;
+  }
+
+  async execute(input: ExecuteInput) {
+    // Grok Build rejects Responses freeform `custom` tools (e.g. Codex apply_patch).
+    const { body, customTools } = convertGrokBuildCustomTools(input.body);
+    const result = await super.execute(body === input.body ? input : { ...input, body });
+    if (!customTools) return result;
+    if (result instanceof Response) return restoreGrokBuildCustomToolCalls(result, customTools);
+    return {
+      ...result,
+      response: await restoreGrokBuildCustomToolCalls(result.response, customTools),
+    };
   }
 
   async refreshCredentials(

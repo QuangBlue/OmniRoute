@@ -1,0 +1,1 @@
+- **fix(grok-cli):** Grok Build (grok-cli) no longer 422s on Responses requests that declare freeform `custom` tools (Codex `apply_patch`): they are sent as function tools on the same-format lane, and returned calls come back as `custom_tool_call` items with streamed input deltas ([#14738](https://github.com/diegosouzapw/OmniRoute/pull/14738))
