@@ -18,6 +18,8 @@ import {
 import { setNoLog } from "../compliance/noLog";
 import { resolveModelAlias } from "@omniroute/open-sse/services/modelDeprecation.ts";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
+import { peekGeneratedSelfLoopSecret } from "@/shared/middleware/chatAdmissionIdentity";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import { getSyncedAvailableModelsByConnection, getCustomModels, getModelIsHidden } from "./models";
 import {
   CLAUDE_CODE_PROVIDER_PREFIXES,
@@ -281,6 +283,20 @@ function isConfiguredEnvApiKey(key: string): boolean {
   const envKey = process.env.OMNIROUTE_API_KEY || process.env.ROUTER_API_KEY;
   return Boolean(envKey && key === envKey);
 }
+
+/**
+ * The random per-process secret the vision/audio bridges send to OmniRoute's own /v1
+ * routes when no env key is set (#13813). Without accepting it, those self-loops got
+ * 401 on every REQUIRE_API_KEY instance without an env key. Validation never creates it.
+ */
+function isSelfLoopBearer(key: string): boolean {
+  const secret = peekGeneratedSelfLoopSecret();
+  return secret !== null && timingSafeCompare(key, secret);
+}
+
+/** Scope and endpoint categories the self-loop credential is limited to. */
+const SELF_LOOP_SCOPE = "internal:self-loop";
+const SELF_LOOP_ENDPOINTS = ["chat", "audio"];
 
 function isRedisAuthCacheEnabled(): boolean {
   return process.env.OMNIROUTE_DISABLE_REDIS_AUTH_CACHE !== "1" && process.env.NODE_ENV !== "test";
@@ -1263,7 +1279,7 @@ export async function setApiKeyExpiry(id: string, expiresAt: string | null): Pro
 export async function validateApiKey(key: string | null | undefined) {
   if (!key || typeof key !== "string") return false;
 
-  if (isConfiguredEnvApiKey(key)) return true;
+  if (isConfiguredEnvApiKey(key) || isSelfLoopBearer(key)) return true;
 
   const now = Date.now();
   const hashedKey = await hashKey(key);
@@ -1367,8 +1383,12 @@ export async function getApiKeyMetadata(
 
   const now = Date.now();
 
+  // The in-process self-loop secret (vision/audio bridges) gets the same record limited
+  // to the chat and audio routes, with a non-empty scope list so no scope defaults apply.
+  const selfLoop = !isConfiguredEnvApiKey(key) && isSelfLoopBearer(key);
+
   // persistent env-var key support (persistent passthrough keys) (#1350)
-  if (isConfiguredEnvApiKey(key)) {
+  if (isConfiguredEnvApiKey(key) || selfLoop) {
     // ─── Env-key management-scope bypass ──────────────────────────────────
     // The deployment-time env key (`OMNIROUTE_API_KEY` / `ROUTER_API_KEY`)
     // is granted the "manage" scope unconditionally. This is intentional:
@@ -1392,8 +1412,8 @@ export async function getApiKeyMetadata(
     // / CI / first-boot scenarios. If you need to disable env-key access,
     // unset the env var instead.
     return {
-      id: "env-key",
-      name: "Environment Key",
+      id: selfLoop ? "self-loop" : "env-key",
+      name: selfLoop ? "Internal self-loop" : "Environment Key",
       machineId: "server-env",
       modelAccessMode: "all",
       allowedModels: [],
@@ -1415,9 +1435,9 @@ export async function getApiKeyMetadata(
       ipAllowlist: [],
       isBanned: false,
       keyHash: null,
-      scopes: ["manage"],
+      scopes: selfLoop ? [SELF_LOOP_SCOPE] : ["manage"],
       proxyId: null,
-      allowedEndpoints: [],
+      allowedEndpoints: selfLoop ? [...SELF_LOOP_ENDPOINTS] : [],
       streamDefaultMode: "legacy",
       cacheDefaultMode: "legacy",
       disableNonPublicModels: false,
