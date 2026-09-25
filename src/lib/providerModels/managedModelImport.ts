@@ -24,8 +24,8 @@ import {
 } from "@omniroute/open-sse/config/antigravityModelAliases.ts";
 import { isDiscoverableAgyModelId } from "@omniroute/open-sse/config/agyModels.ts";
 import {
+  declaresOnlyNonChatEndpoints,
   filterChatSelectableModels,
-  isChatSelectableModel,
 } from "@omniroute/open-sse/services/modelEndpointPolicy.ts";
 import { filterSelectableModels } from "@omniroute/open-sse/services/modelLifecycle.ts";
 import { isSelfHostedChatProvider } from "@/shared/constants/providers";
@@ -301,17 +301,12 @@ export async function importManagedModels({
     // resolution merge it over the synced base. Only replace prior import rows.
     //
     // Discovery above is chat-filtered for every provider but self-hosted ones,
-    // so it never brings back a speech / transcription / image row. Replacing
-    // those rows deleted every model a media-only provider (Soniox, ElevenLabs,
-    // …) had imported from its local catalog on the next sync cycle.
-    const replacedBySync =
-      selfHosted ||
-      isChatSelectableModel(providerId, {
-        id: modelId,
-        supportedEndpoints: Array.isArray(model.supportedEndpoints)
-          ? (model.supportedEndpoints as string[])
-          : undefined,
-      });
+    // so it never brings back a row that declares only speech / transcription /
+    // image / … endpoints. Replacing those rows deleted every model a media-only
+    // provider (Soniox, ElevenLabs, …) had imported from its local catalog on the
+    // next sync cycle. Rows stored with the synthetic ["chat"] default are still
+    // replaced as before.
+    const replacedBySync = selfHosted || !declaresOnlyNonChatEndpoints(model.supportedEndpoints);
     if (isImportedSource(model.source) && replacedBySync) {
       removedCustomModels.push(model);
       continue;

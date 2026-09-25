@@ -23,6 +23,9 @@ const providerModelsRoute = await import("../../src/app/api/providers/[id]/model
 const scheduler = await import("../../src/shared/services/modelSyncScheduler.ts");
 const { importManagedModels } = await import("../../src/lib/providerModels/managedModelImport.ts");
 const { getStaticModelsForProvider } = await import("../../src/lib/providers/staticModels.ts");
+const { expandAutoComboCandidatePool } =
+  await import("../../open-sse/services/combo/autoStrategy.ts");
+const { invalidateDbCache } = await import("../../src/lib/db/readCache.ts");
 
 const originalFetch = globalThis.fetch;
 
@@ -111,5 +114,62 @@ test("sync still replaces imported chat rows with the discovered catalog", async
       (model) => model.id
     ),
     ["gpt-5.6-sol"]
+  );
+});
+
+test("sync still replaces an imported row stored with the synthetic chat default", async () => {
+  // OpenAI image rows imported before endpoint metadata existed carry ["chat"];
+  // they keep the old replace-on-sync behaviour instead of becoming permanent.
+  await modelsDb.addCustomModel("openai", "gpt-image-1", "GPT Image 1", "imported");
+
+  await importManagedModels({
+    providerId: "openai",
+    connectionId: "openai-synthetic-chat-conn",
+    mode: "sync",
+    fetchedModels: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+  });
+
+  const stored = (await modelsDb.getCustomModels("openai")) as StoredModel[];
+  assert.equal(
+    stored.some((model) => model.id === "gpt-image-1"),
+    false
+  );
+});
+
+test("self-hosted providers keep replacing every imported row, since their discovery is unfiltered", async () => {
+  await modelsDb.addCustomModel(
+    "ollama-local",
+    "nomic-embed-text",
+    "Nomic Embed",
+    "imported",
+    "embeddings",
+    ["embeddings"]
+  );
+
+  await importManagedModels({
+    providerId: "ollama-local",
+    connectionId: "ollama-local-conn",
+    mode: "sync",
+    fetchedModels: [{ id: "llama3.3", name: "Llama 3.3" }],
+  });
+
+  const stored = (await modelsDb.getCustomModels("ollama-local")) as StoredModel[];
+  assert.deepEqual(stored, []);
+});
+
+test("a pure-auto combo does not expand imported speech models into chat targets", async () => {
+  await providersDb.createProviderConnection({
+    provider: "soniox",
+    authType: "apikey",
+    name: "Soniox auto pool",
+    apiKey: "soniox-test-key",
+  });
+  invalidateDbCache();
+
+  const targets = await expandAutoComboCandidatePool([], { config: {} });
+
+  assert.deepEqual(
+    targets.filter((target) => target.providerId === "soniox").map((target) => target.modelStr),
+    []
   );
 });
