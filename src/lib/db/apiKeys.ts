@@ -414,6 +414,28 @@ async function getPublishedModelLookupTarget(
   return null;
 }
 
+// Synced and imported models are stored under the canonical provider id, while
+// clients may address the provider by its alias (`sx/tts-rt-v2` for `soniox`).
+// The literal prefix is tried first so a provider id that doubles as another
+// provider's alias keeps its current meaning.
+async function findPublishedModel(
+  providerOrAlias: string,
+  shortModelId: string
+): Promise<{ providerId: string; publishedModelId: string } | null> {
+  for (const providerId of new Set([providerOrAlias, resolveProviderId(providerOrAlias)])) {
+    const [syncedModelsByConnection, customModels] = await Promise.all([
+      getSyncedAvailableModelsByConnection(providerId),
+      getCustomModels(providerId),
+    ]);
+    const syncedModels = Object.values(syncedModelsByConnection).flat();
+    const publishedModelId = syncedModels.concat(customModels).some((m) => m.id === shortModelId)
+      ? shortModelId
+      : resolveSyncedEffortVariantBase(providerId, shortModelId, syncedModels);
+    if (publishedModelId) return { providerId, publishedModelId };
+  }
+  return null;
+}
+
 function ensureApiKeyColumn(
   db: ApiKeysDbLike,
   columnNames: Set<string>,
@@ -1615,27 +1637,13 @@ export async function isModelAllowedForKey(
 
     if (!hasClaudeCodeWildcardPermission(allowedModels, modelPermissionCandidates)) {
       const lookupTarget = await getPublishedModelLookupTarget(effectiveModelId);
-      const providerId = lookupTarget?.providerId || effectiveModelId.split("/")[0];
+      const providerOrAlias = lookupTarget?.providerId || effectiveModelId.split("/")[0];
       const shortModelId = lookupTarget?.modelId || effectiveModelId.split("/").slice(1).join("/");
-      if (!providerId || !shortModelId) return false;
+      if (!providerOrAlias || !shortModelId) return false;
 
-      const [syncedModelsByConnection, customModels] = await Promise.all([
-        getSyncedAvailableModelsByConnection(providerId),
-        getCustomModels(providerId),
-      ]);
-
-      // Combine synced and custom models
-      const allDiscoveredModels = Object.values(syncedModelsByConnection)
-        .flat()
-        .concat(customModels);
-      const publishedModelId = allDiscoveredModels.some((m) => m.id === shortModelId)
-        ? shortModelId
-        : resolveSyncedEffortVariantBase(
-            providerId,
-            shortModelId,
-            Object.values(syncedModelsByConnection).flat()
-          );
-      if (!publishedModelId) return false;
+      const published = await findPublishedModel(providerOrAlias, shortModelId);
+      if (!published) return false;
+      const { providerId, publishedModelId } = published;
 
       // An effort variant dispatches to its base model, so a deny rule on the
       // base model must also deny the variant.
