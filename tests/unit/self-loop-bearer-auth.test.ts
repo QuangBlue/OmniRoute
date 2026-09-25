@@ -23,6 +23,7 @@ const { resolveSelfLoopBearer, peekGeneratedSelfLoopSecret } =
   await import("../../src/shared/middleware/chatAdmissionIdentity.ts");
 const { clientApiPolicy } = await import("../../src/server/authz/policies/clientApi.ts");
 const { callVisionModel } = await import("../../src/lib/guardrails/visionBridgeHelpers.ts");
+const { isSyntheticApiKeyId } = await import("../../src/shared/constants/apiKeyIdentities.ts");
 
 const ENV_KEYS = [
   "OMNIROUTE_API_KEY",
@@ -79,6 +80,8 @@ test("the in-process self-loop bearer authenticates when no env key is set", asy
 test("self-loop metadata allows every model but only the chat and audio routes", async () => {
   const meta = await apiKeysDb.getApiKeyMetadata(resolveSelfLoopBearer());
   assert.equal(meta?.id, "self-loop");
+  // No api_keys row backs this id: orphan repair must keep its budget/cost rows.
+  assert.equal(isSyntheticApiKeyId(meta?.id), true);
   assert.equal(meta?.modelAccessMode, "all");
   // A non-empty scope list: an empty one lets MCP fall back to client/default scopes.
   assert.deepEqual(meta?.scopes, ["internal:self-loop"]);
