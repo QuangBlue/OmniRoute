@@ -21,6 +21,7 @@ import { splitSyncedEffortSuffix } from "@omniroute/open-sse/services/model.ts";
 import { getLearnedReasoningEffortForModel } from "@omniroute/open-sse/services/learnedReasoningEffortCaps.ts";
 import { isSkippedEffortProvider } from "@omniroute/open-sse/utils/syncedEffortVariants.ts";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
+import { isReservedProviderPrefix } from "@/shared/constants/reservedProviderPrefixes";
 import { getSyncedAvailableModelsByConnection, getCustomModels, getModelIsHidden } from "./models";
 import {
   CLAUDE_CODE_PROVIDER_PREFIXES,
@@ -68,7 +69,11 @@ import {
   normalizeApiKeyPermissionsUpdate,
   type ApiKeyPermissionsUpdate,
 } from "./apiKeys/permissionsUpdate";
-import { getModelCatalogCacheVersion, invalidateModelCatalogCache } from "./readCache";
+import {
+  getCachedProviderNodes,
+  getModelCatalogCacheVersion,
+  invalidateModelCatalogCache,
+} from "./readCache";
 import type { AccessSchedule, RateLimitRule } from "./apiKeys/types";
 
 // ──────────────── Performance Optimizations ────────────────
@@ -414,6 +419,15 @@ async function getPublishedModelLookupTarget(
   return null;
 }
 
+// Chat routing hands a non-reserved prefix claimed by a compatible provider node
+// to that node (src/sse/services/model.ts), so such a prefix must not be judged
+// against the built-in provider whose alias it happens to match.
+async function isPrefixClaimedByProviderNode(prefix: string): Promise<boolean> {
+  if (isReservedProviderPrefix(prefix)) return false;
+  const nodes = await getCachedProviderNodes();
+  return nodes.some((node) => node?.prefix === prefix || node?.id === prefix);
+}
+
 // Synced and imported models are stored under the canonical provider id, while
 // clients may address the provider by its alias (`sx/tts-rt-v2` for `soniox`).
 // The literal prefix is tried first so a provider id that doubles as another
@@ -422,7 +436,13 @@ async function findPublishedModel(
   providerOrAlias: string,
   shortModelId: string
 ): Promise<{ providerId: string; publishedModelId: string } | null> {
-  for (const providerId of new Set([providerOrAlias, resolveProviderId(providerOrAlias)])) {
+  const providerIds = [providerOrAlias];
+  const canonicalId = resolveProviderId(providerOrAlias);
+  if (canonicalId !== providerOrAlias && !(await isPrefixClaimedByProviderNode(providerOrAlias))) {
+    providerIds.push(canonicalId);
+  }
+
+  for (const providerId of providerIds) {
     const [syncedModelsByConnection, customModels] = await Promise.all([
       getSyncedAvailableModelsByConnection(providerId),
       getCustomModels(providerId),
@@ -1656,8 +1676,11 @@ export async function isModelAllowedForKey(
         }
       }
 
-      const isPublic = !getModelIsHidden(providerId, publishedModelId);
-      if (!isPublic) return false;
+      // A model hidden under the alias the client used stays hidden.
+      const isHidden =
+        getModelIsHidden(providerId, publishedModelId) ||
+        (providerId !== providerOrAlias && getModelIsHidden(providerOrAlias, publishedModelId));
+      if (isHidden) return false;
     }
   }
 
@@ -1681,6 +1704,25 @@ export async function isModelAllowedForKey(
     const targetOk = checkKeyModelAccess(metadata.id, modelTarget, provider).allowed;
     const fullOk = checkKeyModelAccess(metadata.id, modelId || "", provider).allowed;
     if (!targetOk || !fullOk) allowed = false;
+
+    // A deny rule written against the canonical provider must also stop the alias
+    // form (`sx/…` for a rule on `soniox`). Only explicit denies are applied here,
+    // so allow rules written against the alias keep working.
+    const canonicalProvider = provider ? resolveProviderId(provider) : undefined;
+    if (
+      allowed &&
+      provider &&
+      canonicalProvider !== provider &&
+      !(await isPrefixClaimedByProviderNode(provider))
+    ) {
+      const canonicalModelId = `${canonicalProvider}/${modelTarget}`;
+      if (
+        checkKeyModelAccess(metadata.id, modelTarget, canonicalProvider).deniedBy ||
+        checkKeyModelAccess(metadata.id, canonicalModelId, canonicalProvider).deniedBy
+      ) {
+        allowed = false;
+      }
+    }
   }
   // Cache the result
   if (!usesSettingDependentClaudeRouting) {

@@ -16,6 +16,8 @@ process.env.API_KEY_SECRET = process.env.API_KEY_SECRET || "dnp-provider-alias-s
 const core = await import("../../src/lib/db/core.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
+const apiKeyGroups = await import("../../src/lib/db/apiKeyGroups.ts");
+const { createProviderNode } = await import("../../src/lib/db/providers/nodes.ts");
 const { getProviderAlias } = await import("../../src/shared/constants/providers.ts");
 
 async function resetStorage() {
@@ -87,4 +89,64 @@ test("the alias form still honours deny rules written against the canonical id",
   apiKeysDb.clearApiKeyCaches();
 
   assert.equal(await apiKeysDb.isModelAllowedForKey(created.key, "sx/tts-rt-v2"), false);
+});
+
+test("a hidden flag set under the alias still hides the model", async () => {
+  modelsDb.mergeModelCompatOverride("sx", "tts-rt-v2", { isHidden: true });
+  const key = await createRestrictedKey();
+
+  assert.equal(await apiKeysDb.isModelAllowedForKey(key, "sx/tts-rt-v2"), false);
+});
+
+test("a provider node that claims the alias prefix is not judged by the built-in catalog", async () => {
+  // Chat routing sends a non-reserved prefix claimed by a node to that node, so
+  // the built-in soniox catalog must not vouch for it.
+  await createProviderNode({
+    type: "openai-compatible",
+    name: "Node using sx",
+    prefix: "sx",
+    baseUrl: "https://node.example.com/v1",
+  });
+  const key = await createRestrictedKey();
+
+  assert.equal(await apiKeysDb.isModelAllowedForKey(key, "sx/tts-rt-v2"), false);
+  assert.equal(await apiKeysDb.isModelAllowedForKey(key, "soniox/tts-rt-v2"), true);
+});
+
+test("a synced effort variant addressed by alias resolves to its base model", async () => {
+  await modelsDb.replaceSyncedAvailableModelsForConnection("grok-cli", "conn-grok-1", [
+    { id: "grok-4.6", name: "Grok 4.6", supportedThinkingEfforts: ["low"] },
+  ]);
+  const key = await createRestrictedKey();
+  assert.equal(await apiKeysDb.isModelAllowedForKey(key, "gc/grok-4.6-low"), true);
+
+  const created = await apiKeysDb.createApiKey("Alias Variant Deny Key", "machine-alias-03");
+  await apiKeysDb.updateApiKeyPermissions(created.id, {
+    disableNonPublicModels: true,
+    blockedModels: ["grok-cli/grok-4.6"],
+  });
+  apiKeysDb.clearApiKeyCaches();
+  assert.equal(await apiKeysDb.isModelAllowedForKey(created.key, "gc/grok-4.6-low"), false);
+});
+
+test("a group deny rule on the canonical provider also stops the alias form", async () => {
+  const created = await apiKeysDb.createApiKey("Alias Group Key", "machine-alias-04");
+  const group = apiKeyGroups.createKeyGroup("Soniox deny", "deny soniox");
+  apiKeyGroups.addKeyToGroup(created.id, group.id);
+  apiKeyGroups.addGroupPermission(group.id, "*", "deny", "soniox");
+  apiKeyGroups.addGroupPermission(group.id, "*", "allow");
+  apiKeysDb.clearApiKeyCaches();
+
+  assert.equal(await apiKeysDb.isModelAllowedForKey(created.key, "soniox/tts-rt-v2"), false);
+  assert.equal(await apiKeysDb.isModelAllowedForKey(created.key, "sx/tts-rt-v2"), false);
+});
+
+test("a group allow rule written against the alias keeps working", async () => {
+  const created = await apiKeysDb.createApiKey("Alias Allow Key", "machine-alias-05");
+  const group = apiKeyGroups.createKeyGroup("Soniox alias allow", "allow sx");
+  apiKeyGroups.addKeyToGroup(created.id, group.id);
+  apiKeyGroups.addGroupPermission(group.id, "*", "allow", "sx");
+  apiKeysDb.clearApiKeyCaches();
+
+  assert.equal(await apiKeysDb.isModelAllowedForKey(created.key, "sx/tts-rt-v2"), true);
 });
