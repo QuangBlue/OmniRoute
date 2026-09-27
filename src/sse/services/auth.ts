@@ -920,6 +920,28 @@ function createSelectionLock(key: string) {
 // unavailable in parallel, which was the root cause of cascading 502 lockouts.
 const markMutexes = new Map<string, Promise<void>>();
 
+// ─── Consecutive OAuth 401s per connection ───
+// backoffLevel cannot carry this streak: the status_401 rule does not raise it, and
+// getProviderCredentials resets it once a cooldown has passed. The streak ends when a request
+// succeeds (clearAccountError) or after a quiet window.
+const OAUTH_AUTH_FAILURE_WINDOW_MS = COOLDOWN_MS.unauthorized;
+const oauthAuthFailureStreaks = new Map<string, { count: number; cooldownUntil: number }>();
+
+function nextOAuthAuthFailureCooldownMs(connectionId: string, baseCooldownMs: number): number {
+  const now = Date.now();
+  const previous = oauthAuthFailureStreaks.get(connectionId);
+  const count =
+    previous && now <= previous.cooldownUntil + OAUTH_AUTH_FAILURE_WINDOW_MS
+      ? previous.count + 1
+      : 1;
+  const cooldownMs = Math.min(
+    baseCooldownMs * 2 ** Math.min(count - 1, 16),
+    COOLDOWN_MS.unauthorized
+  );
+  oauthAuthFailureStreaks.set(connectionId, { count, cooldownUntil: now + cooldownMs });
+  return cooldownMs;
+}
+
 // Strict-Random shuffle deck moved to src/shared/utils/shuffleDeck.ts
 // auth.ts uses getNextFromDeckSync inside the provider-scoped selection mutex.
 // Re-export for backwards compat with existing test imports.
@@ -3218,11 +3240,29 @@ export async function markAccountUnavailable(
         ? getCachedQuotaResetAt(connectionId)
         : null;
     const cachedQuotaResetMs = parseFutureDateMs(cachedQuotaResetAt);
-    const cooldownMs = terminalStatus
+    const resolvedCooldownMs = terminalStatus
       ? 0
       : cachedQuotaResetMs
         ? cachedQuotaResetMs - Date.now()
         : rawCooldownMs;
+    // A non-terminal 401 on an OAuth connection (the still-valid token above, or an
+    // invalid-token class) must cool down, but the status_401 rule declares no cooldown, so
+    // every request re-selected the account, refreshed the token and failed again (seen in
+    // production: 273 refreshes and 216 requests losing ~3 s each in a 21-minute 401 burst).
+    const oauthAuthBackoff =
+      status === 401 &&
+      conn?.authType === "oauth" &&
+      // #7268: a 401 that names an unsupported model is a model fact; other models stay usable.
+      providerErrorType !== PROVIDER_ERROR_TYPES.MODEL_NOT_FOUND &&
+      !terminalStatus &&
+      !disableCooling &&
+      !(resolvedCooldownMs > 0);
+    const cooldownMs = oauthAuthBackoff
+      ? nextOAuthAuthFailureCooldownMs(
+          connectionId,
+          effectiveProviderProfile?.baseCooldownMs || COOLDOWN_MS.transientInitial
+        )
+      : resolvedCooldownMs;
 
     // ── #3027 / #12242 (402 variant): per-model subscription (403) or
     // per-model billing (402) error on a passthrough/gateway provider →
@@ -3376,7 +3416,8 @@ export async function markAccountUnavailable(
       await updateProviderConnection(connectionId, {
         ...baseUpdate,
         rateLimitedUntil: getUnavailableUntil(cooldownMs),
-        testStatus: "unavailable",
+        // An OAuth 401 stays refreshable (#12594): cool it down without flagging it unavailable.
+        ...(oauthAuthBackoff ? {} : { testStatus: "unavailable" }),
       });
     } else {
       await updateProviderConnection(connectionId, {
@@ -3415,6 +3456,7 @@ export async function clearAccountError(
   connectionId: string,
   currentConnection: Partial<RecoverableConnectionState>
 ) {
+  oauthAuthFailureStreaks.delete(connectionId);
   // Only update if currently has error status
   const hasError =
     (currentConnection.testStatus && currentConnection.testStatus !== "active") ||
