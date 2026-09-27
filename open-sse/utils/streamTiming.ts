@@ -31,6 +31,7 @@
  * already follows on this streaming path.
  */
 import { attachTokensPerSecond, generationDurationMs } from "./generationThroughput.ts";
+import { sseChunkCarriesOutput } from "./sseOutputSignal.ts";
 
 export interface StreamTiming {
   startedAt: number;
@@ -47,6 +48,12 @@ export interface StreamTiming {
   markForward(): void;
   /** Mark the first forwarded chunk that carries output the user can see. */
   markOutput(): void;
+  /**
+   * Inspect a forwarded SSE chunk and mark the first one that carries output. Only the first
+   * MAX_OUTPUT_PROBES chunks are parsed, so an unrecognized client format cannot turn this into
+   * per-chunk parsing for the whole stream; TTFT then falls back to latency, as before.
+   */
+  observeOutput(bytes: Uint8Array): void;
   markInterrupted(): void;
   /** First-forwarded-SSE-chunk latency in ms, or null if nothing was forwarded. */
   ttftMs(): number | null;
@@ -59,6 +66,13 @@ export interface StreamTiming {
   avgItlMs(): number | null;
   /** Time from stream start to completion (ms). */
   totalMs(): number;
+  /** Timing fields of a stream completion payload. */
+  completionTiming(): {
+    ttft: number | null;
+    firstOutputMs: number | null;
+    itlMs: number | null;
+    interrupted: boolean;
+  };
   /**
    * Attach gateway-measured tok/s (TTFT excluded). No-op when TTFT is unknown.
    */
@@ -67,8 +81,28 @@ export interface StreamTiming {
 
 /** Max number of inter-chunk samples kept (bounds memory). */
 const MAX_INTER_CHUNK_GAPS = 32;
+/** Max number of forwarded chunks parsed while looking for the first output. */
+const MAX_OUTPUT_PROBES = 64;
+
+/**
+ * Request start → first chunk with text, reasoning or a tool call: `originOffsetMs` is the time
+ * from the request start to the stream start. Undefined when the stream carried no output, which
+ * keeps the usage row's latency fallback.
+ */
+export function requestTtftMs(
+  originOffsetMs: number | null,
+  firstOutputMs: number | null | undefined
+): number | undefined {
+  return typeof firstOutputMs === "number" &&
+    Number.isFinite(firstOutputMs) &&
+    originOffsetMs !== null
+    ? originOffsetMs + firstOutputMs
+    : undefined;
+}
 
 export function createStreamTiming(): StreamTiming {
+  const outputDecoder = new TextDecoder();
+  let outputProbes = 0;
   const timing: StreamTiming = {
     startedAt: performance.now(),
     firstByteAt: null,
@@ -93,6 +127,11 @@ export function createStreamTiming(): StreamTiming {
     markOutput() {
       if (this.firstOutputAt === null) this.firstOutputAt = performance.now();
     },
+    observeOutput(bytes) {
+      if (this.firstOutputAt !== null || outputProbes >= MAX_OUTPUT_PROBES) return;
+      outputProbes += 1;
+      if (sseChunkCarriesOutput(outputDecoder.decode(bytes))) this.markOutput();
+    },
     markInterrupted() {
       this.interrupted = true;
     },
@@ -109,6 +148,14 @@ export function createStreamTiming(): StreamTiming {
     },
     totalMs() {
       return performance.now() - this.startedAt;
+    },
+    completionTiming() {
+      return {
+        ttft: this.ttftMs(),
+        firstOutputMs: this.firstOutputMs(),
+        itlMs: this.avgItlMs(),
+        interrupted: this.interrupted,
+      };
     },
     withTps(usage) {
       return attachTokensPerSecond(usage, generationDurationMs(this.totalMs(), this.ttftMs()));

@@ -88,7 +88,6 @@ import { restoreClaudeToolName } from "../services/claudeCodeToolRemapper.ts";
 import { normalizeFinalOpenAIStreamChunk } from "./openAIStreamChunk.ts";
 import { collectClaudeDelta } from "./streamClaudeDelta.ts";
 import { createStreamTiming, type StreamTiming } from "./streamTiming.ts";
-import { sseChunkCarriesOutput } from "./sseOutputSignal.ts";
 import { buildUsageOnlyChunk } from "./usageOnlyChunk.ts";
 
 /**
@@ -143,11 +142,7 @@ type StreamCompletePayload = {
    * NOT token-level TTFT — see open-sse/utils/streamTiming.ts for what is measured.
    */
   ttft?: number | null;
-  /**
-   * Stream start → first forwarded chunk carrying text, reasoning or a tool call, in ms, or
-   * null when none did. The caller adds the time spent before the stream started.
-   */
-  firstOutputMs?: number | null;
+  firstOutputMs?: number | null; // StreamTiming.firstOutputMs(); the caller adds pre-stream time
   /** Mean inter-chunk gap in ms (chunk-latency proxy for ITL), or null. */
   itlMs?: number | null;
   /** True when the stream was interrupted (timeout/abort/error) before a clean finish. */
@@ -793,18 +788,9 @@ export function createSSEStream(options: StreamOptions = {}) {
   // latency (NOT token-level) — see streamTiming.ts.
   const timing: StreamTiming = createStreamTiming();
   /** Forward a pre-encoded SSE chunk, marking TTFT/ITL on the way. */
-  const outputProbe = new TextDecoder();
-  // Inspect forwarded chunks only until the first one that carries output, and at
-  // most this many, so an unrecognized client format cannot turn it into per-chunk parsing
-  // for the whole stream. TTFT then falls back to latency, as before.
-  const MAX_OUTPUT_PROBES = 64;
-  let outputProbes = 0;
   const forward = (controller: TransformStreamDefaultController<Uint8Array>, bytes: Uint8Array) => {
     timing.markForward();
-    if (timing.firstOutputAt === null && outputProbes < MAX_OUTPUT_PROBES) {
-      outputProbes += 1;
-      if (sseChunkCarriesOutput(outputProbe.decode(bytes))) timing.markOutput();
-    }
+    timing.observeOutput(bytes);
     controller.enqueue(bytes);
   };
 
@@ -2888,10 +2874,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                   usage,
                   responseBody,
                   reasoningMeta: reasoningObserver.take(),
-                  ttft: timing.ttftMs(),
-                  firstOutputMs: timing.firstOutputMs(),
-                  itlMs: timing.avgItlMs(),
-                  interrupted: timing.interrupted,
+                  ...timing.completionTiming(),
                   // #9315 switched the summary to the accumulated responseBody to avoid
                   // stale/truncated event data — but responseBody here is synthesized in
                   // chat-completion shape, which loses the Responses API `response` object.
@@ -3178,12 +3161,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 status: 200,
                 usage: state?.usage,
                 responseBody,
-                // The translate branch used to omit timing, so the usage row fell back to
-                // latency_ms for TTFT on every translated stream.
-                ttft: timing.ttftMs(),
-                firstOutputMs: timing.firstOutputMs(),
-                itlMs: timing.avgItlMs(),
-                interrupted: timing.interrupted,
+                ...timing.completionTiming(),
                 reasoningMeta: reasoningObserver.take(),
                 // Same OPENAI_RESPONSES carve-out as the passthrough branch above —
                 // the synthesized chat-shaped responseBody drops the `response` object,

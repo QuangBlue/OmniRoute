@@ -162,6 +162,7 @@ import {
   COLORS,
 } from "../utils/stream.ts";
 import { ensureStreamReadiness } from "../utils/streamReadiness.ts";
+import { requestTtftMs } from "../utils/streamTiming.ts";
 import { resolveSuppressThinkClose, THINKING_MARKER_HEADER } from "../utils/thinkCloseMarker.ts";
 import { resolveStreamReadinessTimeout } from "../utils/streamReadinessPolicy.ts";
 import { resolveAgentGoalPolicy } from "../utils/agentGoalPolicy.ts";
@@ -6025,10 +6026,7 @@ async function handleChatCoreInner({
   let streamFailureCompletionRecorded = false;
 
   // Callback to save call log when stream completes (include responseBody when provided by stream)
-  // Time (ms) from `startTime` to the moment the SSE transform (and its StreamTiming) is
-  // created. The stream reports its first output relative to its own start; adding this
-  // offset puts TTFT on the same epoch as latency_ms.
-  let streamTimingOriginOffsetMs: number | null = null;
+  let streamTimingOriginOffsetMs: number | null = null; // startTime → StreamTiming start
   const onStreamComplete = ({
     status: streamStatus,
     usage: streamUsage,
@@ -6042,14 +6040,7 @@ async function handleChatCoreInner({
     itlMs: streamItlMs,
     interrupted: _streamInterrupted,
   }) => {
-    // Request start → first chunk with text, reasoning or a tool call. Undefined when the
-    // stream carried no output, which keeps the usage row's latency fallback.
-    const ttft =
-      typeof firstOutputMs === "number" &&
-      Number.isFinite(firstOutputMs) &&
-      streamTimingOriginOffsetMs !== null
-        ? streamTimingOriginOffsetMs + firstOutputMs
-        : undefined;
+    const ttft = requestTtftMs(streamTimingOriginOffsetMs, firstOutputMs);
     const normalizedStreamStatus = streamStatus || 200;
     if (streamCompletionRecorded) return;
     streamCompletionRecorded = true;
