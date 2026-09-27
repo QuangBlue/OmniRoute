@@ -36,6 +36,8 @@ export interface StreamTiming {
   startedAt: number;
   firstByteAt: number | null;
   firstForwardAt: number | null;
+  /** First forwarded chunk that carried text, reasoning or a tool call. */
+  firstOutputAt: number | null;
   lastForwardAt: number | null;
   /** Mean gap between forwarded chunks (ms), bounded window. */
   interChunkGaps: number[];
@@ -43,9 +45,16 @@ export interface StreamTiming {
   interrupted: boolean;
   markByte(): void;
   markForward(): void;
+  /** Mark the first forwarded chunk that carries output the user can see. */
+  markOutput(): void;
   markInterrupted(): void;
   /** First-forwarded-SSE-chunk latency in ms, or null if nothing was forwarded. */
   ttftMs(): number | null;
+  /**
+   * Time from stream start to the first forwarded chunk carrying output, or null when no
+   * chunk carried any. Unlike ttftMs(), keepalive, role-only and lifecycle frames are skipped.
+   */
+  firstOutputMs(): number | null;
   /** Mean inter-chunk gap in ms, or null when fewer than 2 chunks were forwarded. */
   avgItlMs(): number | null;
   /** Time from stream start to completion (ms). */
@@ -64,6 +73,7 @@ export function createStreamTiming(): StreamTiming {
     startedAt: performance.now(),
     firstByteAt: null,
     firstForwardAt: null,
+    firstOutputAt: null,
     lastForwardAt: null,
     interChunkGaps: [],
     forwardedChunks: 0,
@@ -80,11 +90,17 @@ export function createStreamTiming(): StreamTiming {
       this.lastForwardAt = now;
       this.forwardedChunks += 1;
     },
+    markOutput() {
+      if (this.firstOutputAt === null) this.firstOutputAt = performance.now();
+    },
     markInterrupted() {
       this.interrupted = true;
     },
     ttftMs() {
       return this.firstForwardAt === null ? null : this.firstForwardAt - this.startedAt;
+    },
+    firstOutputMs() {
+      return this.firstOutputAt === null ? null : this.firstOutputAt - this.startedAt;
     },
     avgItlMs() {
       if (this.interChunkGaps.length === 0) return null;

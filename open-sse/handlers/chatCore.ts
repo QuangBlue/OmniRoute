@@ -5987,6 +5987,10 @@ export async function handleChatCore({
   let streamFailureCompletionRecorded = false;
 
   // Callback to save call log when stream completes (include responseBody when provided by stream)
+  // Time (ms) from `startTime` to the moment the SSE transform (and its StreamTiming) is
+  // created. The stream reports its first output relative to its own start; adding this
+  // offset puts TTFT on the same epoch as latency_ms.
+  let streamTimingOriginOffsetMs: number | null = null;
   const onStreamComplete = ({
     status: streamStatus,
     usage: streamUsage,
@@ -5995,10 +5999,18 @@ export async function handleChatCore({
     clientPayload,
     error: streamError,
     errorCode: streamErrorCode,
-    ttft,
+    firstOutputMs,
     itlMs: streamItlMs,
     interrupted: _streamInterrupted,
   }) => {
+    // Request start → first chunk with text, reasoning or a tool call. Undefined when the
+    // stream carried no output, which keeps the usage row's latency fallback.
+    const ttft =
+      typeof firstOutputMs === "number" &&
+      Number.isFinite(firstOutputMs) &&
+      streamTimingOriginOffsetMs !== null
+        ? streamTimingOriginOffsetMs + firstOutputMs
+        : undefined;
     const normalizedStreamStatus = streamStatus || 200;
     if (streamCompletionRecorded) return;
     streamCompletionRecorded = true;
@@ -6267,6 +6279,7 @@ export async function handleChatCore({
   // DSML tool-call markers as plain text → incomplete `stop` finish).
   const requestedThinking = hasActiveClaudeThinking((body ?? {}) as Record<string, unknown>);
 
+  streamTimingOriginOffsetMs = Date.now() - startTime;
   if (needsResponsesTranslation) {
     // Provider returns openai-responses, translate to openai (Chat Completions) that clients expect
     log?.debug?.("STREAM", `Responses translation mode: openai-responses → openai`);
