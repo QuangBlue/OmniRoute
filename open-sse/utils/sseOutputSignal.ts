@@ -47,10 +47,8 @@ function chatChoiceCarriesOutput(choice: unknown): boolean {
   );
 }
 
-function eventCarriesOutput(event: Record<string, unknown>): boolean {
-  if (Array.isArray(event.choices)) return event.choices.some(chatChoiceCarriesOutput);
-
-  const type = typeof event.type === "string" ? event.type : "";
+/** Claude Messages and OpenAI Responses events; null when the type belongs to neither. */
+function typedEventCarriesOutput(type: string, event: Record<string, unknown>): boolean | null {
   if (type === "content_block_delta" && isRecord(event.delta)) {
     const delta = event.delta;
     return hasText(delta.text) || hasText(delta.thinking) || hasText(delta.partial_json);
@@ -62,21 +60,31 @@ function eventCarriesOutput(event: Record<string, unknown>): boolean {
   if (type === "response.output_item.added" && isRecord(event.item)) {
     return RESPONSES_TOOL_ITEM_TYPES.has(String(event.item.type));
   }
+  return null;
+}
+
+function geminiCandidatesCarryOutput(candidates: unknown[]): boolean {
+  return candidates.some((candidate) => {
+    const parts =
+      isRecord(candidate) && isRecord(candidate.content) ? candidate.content.parts : null;
+    return (
+      Array.isArray(parts) &&
+      parts.some((part) => isRecord(part) && (hasText(part.text) || isRecord(part.functionCall)))
+    );
+  });
+}
+
+function eventCarriesOutput(event: Record<string, unknown>): boolean {
+  if (Array.isArray(event.choices)) return event.choices.some(chatChoiceCarriesOutput);
+
+  const typed = typedEventCarriesOutput(typeof event.type === "string" ? event.type : "", event);
+  if (typed !== null) return typed;
 
   // Antigravity clients get Gemini candidates wrapped in `response` (openai-to-antigravity).
   if (isRecord(event.response) && Array.isArray(event.response.candidates)) {
-    return eventCarriesOutput({ candidates: event.response.candidates });
+    return geminiCandidatesCarryOutput(event.response.candidates);
   }
-  if (Array.isArray(event.candidates)) {
-    return event.candidates.some((candidate) => {
-      const parts =
-        isRecord(candidate) && isRecord(candidate.content) ? candidate.content.parts : null;
-      return (
-        Array.isArray(parts) &&
-        parts.some((part) => isRecord(part) && (hasText(part.text) || isRecord(part.functionCall)))
-      );
-    });
-  }
+  if (Array.isArray(event.candidates)) return geminiCandidatesCarryOutput(event.candidates);
   return false;
 }
 
