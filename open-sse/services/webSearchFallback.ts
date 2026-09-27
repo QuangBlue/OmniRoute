@@ -15,6 +15,7 @@ type JsonRecord = Record<string, unknown>;
 type WebSearchFallbackBody = JsonRecord & {
   tools?: unknown;
   tool_choice?: unknown;
+  input?: unknown;
 };
 
 export interface WebSearchFallbackPlan {
@@ -294,7 +295,7 @@ export function prepareWebSearchFallbackBody<T extends WebSearchFallbackBody>(
     tools: preservedTools as T["tools"],
   };
   if (Array.isArray(body.input)) {
-    nextBody.input = dropClientRejectionsOfFallbackCalls(body.input);
+    nextBody.input = dropClientRejectionsOfFallbackCalls(body.input) as T["input"];
   }
 
   if (isBuiltInWebSearchToolChoice(body.tool_choice)) {
