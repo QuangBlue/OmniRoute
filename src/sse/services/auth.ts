@@ -3219,15 +3219,10 @@ export async function markAccountUnavailable(
     ) {
       terminalStatus = null;
     }
-    // A 5xx is a server failure, not a quota verdict. A quota-sounding text
-    // match on one (e.g. Cursor's empty-turn hint "often usage/quota
-    // exhausted") must not park the connection until a cached quota reset
-    // weeks away (billing-cycle end); it takes the normal capped cooldown.
-    // Coerce first: a missing/non-numeric status is not a known 5xx and keeps
-    // the quota park.
-    const isServerError = Number(status) >= 500;
+    // A known 5xx is a server failure, not a quota verdict (e.g. Cursor's empty-turn
+    // hint): never park it until a cached quota reset weeks away.
     const cachedQuotaResetAt =
-      !isServerError &&
+      !(Number(status) >= 500) &&
       (providerErrorType === PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED ||
         reason === RateLimitReason.QUOTA_EXHAUSTED)
         ? getCachedQuotaResetAt(connectionId)
