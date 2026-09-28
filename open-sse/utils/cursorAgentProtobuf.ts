@@ -105,6 +105,7 @@ const ASM_KV_SERVER_MESSAGE = 4; // AgentServerMessage.kv_server_message
 // Cursor sends kv_server_message frames once the model stops generating
 // (it saves the assistant turn into a blob). For non-tool-calling chats
 // this functions as our end-of-response marker.
+const ASM_TTFT_BREAKDOWN = 8; // AgentServerMessage.ttft_breakdown (beside the oneof)
 
 const ESM_ID = 1; // ExecServerMessage.id
 const ESM_EXEC_ID = 15; // ExecServerMessage.exec_id
@@ -635,12 +636,87 @@ export function buildAgentRequestBody(input: AgentRunInput): Buffer {
 
 // ─── Response decoder ──────────────────────────────────────────────────────
 
+/** TurnEndedUpdate: Cursor's metered token counts for the turn. `input` includes `cacheRead`. */
+export type CursorTurnUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+};
+
+/** TtftBreakdown: Cursor's server-side split of the time to first token, in ms. */
+export type CursorTtftBreakdown = {
+  serverFirstTokenMs: number;
+  preStreamSetupMs: number;
+  waitForFirstEventMs: number;
+  providerTtftMs: number;
+  slowPoolWaitMs: number;
+};
+
+// Usage is telemetry: a malformed or input-less body must not cost the frame
+// its turn_ended end signal, so it degrades to "no usage" instead of throwing.
+function decodeTurnEndedUsage(bytes: Buffer): CursorTurnUsage | undefined {
+  if (bytes.length === 0) return undefined;
+  try {
+    const fields = decodeFields(bytes);
+    const read = (n: number) => {
+      const f = findField(fields, n);
+      return f && f.wireType === WT_VARINT ? Number(f.varint) : 0;
+    };
+    const usage = {
+      input: read(1),
+      output: read(2),
+      cacheRead: read(3),
+      cacheWrite: read(4),
+      reasoning: read(5),
+    };
+    return usage.input > 0 ? usage : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// decodeFields skips fixed64, and every TtftBreakdown field is a double.
+function decodeTtftBreakdown(buf: Buffer): CursorTtftBreakdown {
+  const ms = [0, 0, 0, 0, 0, 0];
+  let pos = 0;
+  while (pos < buf.length) {
+    const [tag, np] = decodeVarint(buf, pos);
+    pos = np;
+    const fieldNumber = Number(tag >> 3n);
+    const wireType = Number(tag & 0x7n);
+    if (wireType === 1) {
+      if (pos + 8 > buf.length) break;
+      if (fieldNumber >= 1 && fieldNumber <= 5) ms[fieldNumber] = buf.readDoubleLE(pos);
+      pos += 8;
+    } else if (wireType === WT_VARINT) {
+      pos = decodeVarint(buf, pos)[1];
+    } else if (wireType === WT_LEN) {
+      const [len, afterLength] = decodeVarint(buf, pos);
+      pos = afterLength + checkedLen(len, afterLength, buf);
+    } else if (wireType === 5) {
+      pos += 4;
+    } else {
+      break;
+    }
+  }
+  return {
+    serverFirstTokenMs: ms[1],
+    preStreamSetupMs: ms[2],
+    waitForFirstEventMs: ms[3],
+    providerTtftMs: ms[4],
+    slowPoolWaitMs: ms[5],
+  };
+}
+
 export type DecodedDelta =
   | { kind: "text"; text: string }
   | { kind: "thinking"; text: string }
   | { kind: "thinking_complete" }
   | { kind: "token_delta"; tokens: number }
-  | { kind: "turn_ended" }
+  | { kind: "turn_ended"; usage?: CursorTurnUsage }
+  | ({ kind: "ttft_breakdown" } & CursorTtftBreakdown)
   | { kind: "heartbeat" }
   | { kind: "tool_call_started" }
   | { kind: "tool_call_completed" }
@@ -683,7 +759,10 @@ const INTERACTION_UPDATE_DECODERS: Partial<Record<number, InteractionUpdateDecod
       ? [{ kind: "token_delta", tokens: decodeVarintField(field.bytes, 1) }]
       : [],
   [IU_HEARTBEAT]: () => [{ kind: "heartbeat" }],
-  [IU_TURN_ENDED]: () => [{ kind: "turn_ended" }],
+  [IU_TURN_ENDED]: (field) => {
+    const usage = field.wireType === WT_LEN ? decodeTurnEndedUsage(field.bytes) : undefined;
+    return [usage ? { kind: "turn_ended", usage } : { kind: "turn_ended" }];
+  },
 };
 
 function decodeInteractionUpdate(field: Field): DecodedDelta[] {
@@ -696,6 +775,15 @@ export function decodeAgentServerMessage(payload: Buffer): DecodedDelta[] {
   for (const top of decodeFields(payload)) {
     if (top.fieldNumber === ASM_KV_SERVER_MESSAGE && top.wireType === 2) {
       out.push({ kind: "kv_server_message" });
+      continue;
+    }
+    if (top.fieldNumber === ASM_TTFT_BREAKDOWN && top.wireType === 2) {
+      // Telemetry only: never let a malformed breakdown drop the frame.
+      try {
+        out.push({ kind: "ttft_breakdown", ...decodeTtftBreakdown(top.bytes) });
+      } catch {
+        /* ignore */
+      }
       continue;
     }
     if (top.fieldNumber !== ASM_INTERACTION_UPDATE || top.wireType !== 2) continue;

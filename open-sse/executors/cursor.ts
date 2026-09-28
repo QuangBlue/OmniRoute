@@ -34,6 +34,8 @@ import {
   flattenMessages,
   openAIToolsToMcpDefs,
   type ChatMessage,
+  type CursorTtftBreakdown,
+  type CursorTurnUsage,
   type EncodedImage,
   type ExecServerEvent,
   type McpToolDefinition,
@@ -90,6 +92,8 @@ import {
   resolveCursorEmptyTurnError,
   type ClassifiedCursorError,
 } from "./cursor/cursorErrors.ts";
+import { resolveCursorWireConversationId } from "./cursor/conversationId.ts";
+import type { CursorReportedUsage } from "../services/cursorSessionManager.ts";
 import { getActiveSyncedCatalog } from "../../src/lib/db/models/activeSyncedCatalog.ts";
 import {
   createNarrationStreamScrubber,
@@ -309,6 +313,15 @@ export type StreamCtx = {
   totalText: string;
   thinkingText: string;
   tokenDelta: number;
+  // Cursor's metered counts from TurnEndedUpdate (null until turn_ended carries them).
+  // They total the whole run, including segments reported by earlier HTTP requests.
+  upstreamUsage: CursorTurnUsage | null;
+  // Usage earlier segments of this run already reported (inline tool resume).
+  priorReportedUsage: CursorReportedUsage | null;
+  // Usage this segment reported, set by buildCursorUsage.
+  reportedUsage: CursorReportedUsage | null;
+  // Cursor's server-side TTFT split (AgentServerMessage.ttft_breakdown), when sent.
+  ttftBreakdown: CursorTtftBreakdown | null;
   // End-signal tracking (Phase 8 hardens this further).
   receivedText: boolean;
   kvAfterTextSeen: boolean;
@@ -365,6 +378,10 @@ export function newStreamCtx(model: string, emit: (chunk: string) => void): Stre
     totalText: "",
     thinkingText: "",
     tokenDelta: 0,
+    upstreamUsage: null,
+    priorReportedUsage: null,
+    reportedUsage: null,
+    ttftBreakdown: null,
     receivedText: false,
     kvAfterTextSeen: false,
     endReason: null,
@@ -433,11 +450,38 @@ export function emitCursorSseError(ctx: StreamCtx, classified: ClassifiedCursorE
 }
 
 export function buildCursorUsage(ctx: StreamCtx, body: { messages?: ChatMessage[] }) {
+  const metered = ctx.upstreamUsage;
+  if (metered) {
+    // Cursor's TurnEndedUpdate `input` already includes the cache reads, which
+    // matches OpenAI's prompt_tokens / prompt_tokens_details.cached_tokens.
+    // It totals the whole run, so subtract what earlier tool-resume segments
+    // of the same run reported; the segments then sum to Cursor's metering.
+    const prior = ctx.priorReportedUsage ?? { prompt: 0, completion: 0, cached: 0 };
+    const runInput = Math.max(metered.input, metered.cacheRead + metered.cacheWrite);
+    const prompt = Math.max(0, runInput - prior.prompt);
+    const completion = Math.max(0, metered.output - prior.completion);
+    const cached = Math.min(prompt, Math.max(0, metered.cacheRead - prior.cached));
+    ctx.reportedUsage = { prompt, completion, cached };
+    const usage: Record<string, unknown> = {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      prompt_tokens_details: {
+        cached_tokens: cached,
+        ...(metered.cacheWrite > 0 ? { cache_creation_tokens: metered.cacheWrite } : {}),
+      },
+    };
+    if (metered.reasoning > 0) {
+      usage.completion_tokens_details = { reasoning_tokens: metered.reasoning };
+    }
+    return addBufferToUsage(usage);
+  }
   const promptTokens = estimateInputTokens(body);
   const completionTokens =
     ctx.tokenDelta > 0
       ? ctx.tokenDelta
       : estimateOutputTokens(ctx.totalText.length + ctx.thinkingText.length);
+  ctx.reportedUsage = { prompt: promptTokens, completion: completionTokens, cached: 0 };
   const usage: Record<string, unknown> = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
@@ -450,6 +494,28 @@ export function buildCursorUsage(ctx: StreamCtx, body: { messages?: ChatMessage[
     };
   }
   return addBufferToUsage(usage);
+}
+
+/**
+ * One log line per turn with Cursor's own TTFT split and metered cache usage,
+ * so a slow turn can be attributed to the router or to Cursor. Null when
+ * Cursor sent neither.
+ */
+export function formatCursorTurnMetrics(ctx: StreamCtx): string | null {
+  const t = ctx.ttftBreakdown;
+  const u = ctx.upstreamUsage;
+  if (!t && !u) return null;
+  const parts: string[] = [];
+  if (t) {
+    parts.push(
+      `server_first_token=${Math.round(t.serverFirstTokenMs)}ms`,
+      `provider_ttft=${Math.round(t.providerTtftMs)}ms`,
+      `pre_stream=${Math.round(t.preStreamSetupMs)}ms`,
+      `slow_pool=${Math.round(t.slowPoolWaitMs)}ms`
+    );
+  }
+  if (u) parts.push(`in=${u.input}`, `cache_read=${u.cacheRead}`, `out=${u.output}`);
+  return `[CURSOR] ${ctx.model} turn: ${parts.join(" ")}`;
 }
 
 function emitUsage(ctx: StreamCtx, body: { messages?: ChatMessage[] }) {
@@ -767,7 +833,11 @@ export function processFrame(
     } else if (d.kind === "token_delta") {
       ctx.tokenDelta += d.tokens;
     } else if (d.kind === "turn_ended") {
+      if (d.usage) ctx.upstreamUsage = d.usage;
       if (ctx.endReason !== "tool_calls") ctx.endReason = "turn_ended";
+    } else if (d.kind === "ttft_breakdown") {
+      const { kind: _kind, ...breakdown } = d;
+      ctx.ttftBreakdown = breakdown;
     } else if (d.kind === "tool_call_completed" && ctx.toolCalls.length > 0) {
       // Phase 6: model paused awaiting tool result. driveH2 returns but the
       // h2 stream stays open — the session manager keeps it alive for the
@@ -971,7 +1041,8 @@ export class CursorExecutor extends BaseExecutor {
       max_completion_tokens?: unknown;
       stop?: unknown;
       response_format?: unknown;
-    }
+    },
+    wireConversationId?: string
   ): Promise<{ body: Uint8Array; blobStore: Map<string, Buffer> }> {
     const { userText, tools } = this.assembleTextAndTools(body);
     const [images, liveCatalogIds] = await Promise.all([
@@ -983,7 +1054,7 @@ export class CursorExecutor extends BaseExecutor {
     const requestBody = buildAgentRequestBody({
       modelId: model,
       userText,
-      conversationId: body.conversation_id,
+      conversationId: wireConversationId ?? body.conversation_id,
       tools,
       blobStore,
       images,
@@ -1333,7 +1404,7 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, upstreamExtraHeaders }) {
+  async execute({ model, body, stream, credentials, signal, upstreamExtraHeaders, clientHeaders }) {
     const fallbackUrl = this.buildUrl();
     const executionCredentials = await this.resolveExecutionCredentials(credentials);
     if (executionCredentials instanceof Response) {
@@ -1377,6 +1448,13 @@ export class CursorExecutor extends BaseExecutor {
       typeof body.conversation_id === "string" && body.conversation_id
         ? body.conversation_id
         : crypto.randomUUID();
+    // conversationId above stays the per-request session-manager key; Cursor
+    // gets a session-stable id so it keeps the prompt cache.
+    const wireConversationId = resolveCursorWireConversationId(
+      body,
+      clientHeaders,
+      credentials?.connectionId
+    );
     const lastMessage = messages[messages.length - 1];
     const isToolFollowUp = lastMessage?.role === "tool";
 
@@ -1490,7 +1568,7 @@ export class CursorExecutor extends BaseExecutor {
       // parts (base64 / remote) into inlined cursor images.
       let built;
       try {
-        built = await this.buildRequest(model, body);
+        built = await this.buildRequest(model, body, wireConversationId);
       } catch (err) {
         // Image resolution failures (invalid / oversized / SSRF-blocked) are
         // client errors — return a sanitized 400 rather than a 500.
@@ -1543,6 +1621,8 @@ export class CursorExecutor extends BaseExecutor {
     // Closure to share the post-drive lifecycle between stream/non-stream paths.
     const sessionToUse = session;
     const finishLifecycle = (ctx: StreamCtx, errored: boolean) => {
+      const turnMetrics = formatCursorTurnMetrics(ctx);
+      if (turnMetrics) console.log(turnMetrics);
       // Persist any new pendingToolCalls from this turn into the session.
       for (const [id, info] of ctx.pendingToolCalls) {
         sessionToUse.pendingToolCalls.set(id, info);
@@ -1550,6 +1630,15 @@ export class CursorExecutor extends BaseExecutor {
       if (errored || ctx.endReason !== "tool_calls" || ctx.requiresColdResume) {
         cursorSessionManager.close(sessionToUse);
       } else {
+        const prior = sessionToUse.reportedUsage;
+        const now = ctx.reportedUsage;
+        if (now) {
+          sessionToUse.reportedUsage = {
+            prompt: (prior?.prompt ?? 0) + now.prompt,
+            completion: (prior?.completion ?? 0) + now.completion,
+            cached: (prior?.cached ?? 0) + now.cached,
+          };
+        }
         cursorSessionManager.release(sessionToUse, "awaiting_tool_result");
       }
     };
@@ -1561,6 +1650,7 @@ export class CursorExecutor extends BaseExecutor {
         {
           start: async (controller) => {
             const ctx = newStreamCtx(model, (s) => controller.enqueue(enc.encode(s)));
+            ctx.priorReportedUsage = sessionToUse.reportedUsage ?? null;
             try {
               await this.driveH2(h2, ctx, mcpTools, blobStore, clientPlatform, todoHistory, signal);
               this.finalizeSseStream(ctx, body);
@@ -1602,6 +1692,7 @@ export class CursorExecutor extends BaseExecutor {
 
     // Non-streaming: drive to completion, return chat.completion JSON.
     const ctx = newStreamCtx(model, () => {});
+    ctx.priorReportedUsage = sessionToUse.reportedUsage ?? null;
     try {
       await this.driveH2(h2, ctx, mcpTools, blobStore, clientPlatform, todoHistory, signal);
     } catch (err) {
@@ -1627,9 +1718,11 @@ export class CursorExecutor extends BaseExecutor {
         transformedBody: body,
       };
     }
+    // Build first: buildCursorUsage records ctx.reportedUsage for finishLifecycle.
+    const response = this.buildResponseFromCtx(ctx, body);
     finishLifecycle(ctx, false);
     return {
-      response: this.buildResponseFromCtx(ctx, body),
+      response,
       url,
       headers,
       transformedBody: body,
