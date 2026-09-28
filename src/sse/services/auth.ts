@@ -3216,8 +3216,11 @@ export async function markAccountUnavailable(
     // match on one (e.g. Cursor's empty-turn hint "often usage/quota
     // exhausted") must not park the connection until a cached quota reset
     // weeks away (billing-cycle end); it takes the normal capped cooldown.
+    // Coerce first: a missing/non-numeric status is not a known 5xx and keeps
+    // the quota park.
+    const isServerError = Number(status) >= 500;
     const cachedQuotaResetAt =
-      status < 500 &&
+      !isServerError &&
       (providerErrorType === PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED ||
         reason === RateLimitReason.QUOTA_EXHAUSTED)
         ? getCachedQuotaResetAt(connectionId)

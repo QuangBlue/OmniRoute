@@ -30,6 +30,8 @@ test.after(() => {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const cycleEnd = () => new Date(Date.now() + 30 * DAY_MS).toISOString();
+// Fail fast instead of hanging the runner if a regression parks the connection.
+const TEST_OPTS = { timeout: 10_000 };
 
 async function cursorConnection(): Promise<string> {
   const connection = await providersDb.createProviderConnection({
@@ -42,30 +44,34 @@ async function cursorConnection(): Promise<string> {
   return (connection as { id: string }).id;
 }
 
-test("a 5xx with a quota text match does not park until the cached billing-cycle reset", async () => {
-  const connectionId = await cursorConnection();
-  const resetAt = cycleEnd();
-  quotaCache.setQuotaCache(connectionId, "cursor", {
-    Total: { remainingPercentage: 99.96, resetAt },
-    "Auto + Composer": { remainingPercentage: 99.95, resetAt },
-    API: { remainingPercentage: 100, resetAt },
-  });
+test(
+  "a 5xx with a quota text match does not park until the cached billing-cycle reset",
+  TEST_OPTS,
+  async () => {
+    const connectionId = await cursorConnection();
+    const resetAt = cycleEnd();
+    quotaCache.setQuotaCache(connectionId, "cursor", {
+      Total: { remainingPercentage: 99.96, resetAt },
+      "Auto + Composer": { remainingPercentage: 99.95, resetAt },
+      API: { remainingPercentage: 100, resetAt },
+    });
 
-  const result = await auth.markAccountUnavailable(
-    connectionId,
-    502,
-    CURSOR_EMPTY_TURN_MESSAGE,
-    "cursor",
-    "claude-fable-5-1-thinking-max"
-  );
-  const after = await providersDb.getProviderConnectionById(connectionId);
-  const parkedMs = new Date(after.rateLimitedUntil).getTime() - Date.now();
+    const result = await auth.markAccountUnavailable(
+      connectionId,
+      502,
+      CURSOR_EMPTY_TURN_MESSAGE,
+      "cursor",
+      "claude-fable-5-1-thinking-max"
+    );
+    const after = await providersDb.getProviderConnectionById(connectionId);
+    const parkedMs = new Date(after.rateLimitedUntil).getTime() - Date.now();
 
-  assert.ok(result.cooldownMs < 60 * 60 * 1000, `cooldown ${result.cooldownMs}ms`);
-  assert.ok(parkedMs < 60 * 60 * 1000, `parked until ${after.rateLimitedUntil}`);
-});
+    assert.ok(result.cooldownMs < 60 * 60 * 1000, `cooldown ${result.cooldownMs}ms`);
+    assert.ok(parkedMs < 60 * 60 * 1000, `parked until ${after.rateLimitedUntil}`);
+  }
+);
 
-test("a 5xx does not park on a spent pool either (e.g. Cursor's API pool)", async () => {
+test("a 5xx does not park on a spent pool either (e.g. Cursor's API pool)", TEST_OPTS, async () => {
   const connectionId = await cursorConnection();
   quotaCache.setQuotaCache(connectionId, "cursor", {
     Total: { remainingPercentage: 60, resetAt: cycleEnd() },
@@ -84,25 +90,52 @@ test("a 5xx does not park on a spent pool either (e.g. Cursor's API pool)", asyn
   assert.ok(result.cooldownMs < 60 * 60 * 1000, `cooldown ${result.cooldownMs}ms`);
 });
 
-test("a real quota error (429) still parks the connection until the cached reset", async () => {
-  const connectionId = await cursorConnection();
-  const windowReset = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-  quotaCache.setQuotaCache(connectionId, "cursor", {
-    Total: { remainingPercentage: 40, resetAt: cycleEnd() },
-    API: { remainingPercentage: 0, resetAt: windowReset },
-  });
+test(
+  "a real quota error (429) still parks the connection until the cached reset",
+  TEST_OPTS,
+  async () => {
+    const connectionId = await cursorConnection();
+    const windowReset = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    quotaCache.setQuotaCache(connectionId, "cursor", {
+      Total: { remainingPercentage: 40, resetAt: cycleEnd() },
+      API: { remainingPercentage: 0, resetAt: windowReset },
+    });
 
-  const result = await auth.markAccountUnavailable(
-    connectionId,
-    429,
-    "You have exceeded your quota. Your quota exhausted for this window.",
-    "cursor",
-    "auto"
-  );
-  const after = await providersDb.getProviderConnectionById(connectionId);
+    const result = await auth.markAccountUnavailable(
+      connectionId,
+      429,
+      "You have exceeded your quota. Your quota exhausted for this window.",
+      "cursor",
+      "auto"
+    );
+    const after = await providersDb.getProviderConnectionById(connectionId);
 
-  assert.ok(Math.abs(result.cooldownMs - 2 * 60 * 60 * 1000) < 2_000);
-  assert.ok(
-    Math.abs(new Date(after.rateLimitedUntil).getTime() - new Date(windowReset).getTime()) < 100
-  );
-});
+    assert.ok(Math.abs(result.cooldownMs - 2 * 60 * 60 * 1000) < 2_000);
+    assert.ok(
+      Math.abs(new Date(after.rateLimitedUntil).getTime() - new Date(windowReset).getTime()) < 100
+    );
+  }
+);
+
+test(
+  "a missing status is not treated as a 5xx and still parks on a quota error",
+  TEST_OPTS,
+  async () => {
+    const connectionId = await cursorConnection();
+    const windowReset = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    quotaCache.setQuotaCache(connectionId, "cursor", {
+      Total: { remainingPercentage: 40, resetAt: cycleEnd() },
+      API: { remainingPercentage: 0, resetAt: windowReset },
+    });
+
+    const result = await auth.markAccountUnavailable(
+      connectionId,
+      undefined as unknown as number,
+      "You have exceeded your quota. Your quota exhausted for this window.",
+      "cursor",
+      "auto"
+    );
+
+    assert.ok(Math.abs(result.cooldownMs - 2 * 60 * 60 * 1000) < 2_000);
+  }
+);
