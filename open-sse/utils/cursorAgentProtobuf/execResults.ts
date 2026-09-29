@@ -48,6 +48,7 @@ const READ_SUCCESS_PATH = 1; // ReadSuccess.path
 const READ_SUCCESS_CONTENT = 2; // ReadSuccess.content
 const READ_SUCCESS_TOTAL_LINES = 3; // ReadSuccess.total_lines
 const READ_SUCCESS_FILE_SIZE = 4; // ReadSuccess.file_size
+const READ_SUCCESS_RANGE_APPLIED = 8; // ReadSuccess.range_applied
 const SHELL_STREAM_STDOUT = 1; // ShellStream.stdout
 const SHELL_STREAM_EXIT = 3; // ShellStream.exit
 const SHELL_STREAM_START = 4; // ShellStream.start
@@ -279,7 +280,8 @@ export function encodeExecReadSuccess(
   execMsgId: number,
   execId: string,
   path: string,
-  content: string
+  content: string,
+  rangeApplied = false
 ): Buffer {
   const success = encodeMessage(RES_SUCCESS, [
     Buffer.concat([
@@ -287,6 +289,10 @@ export function encodeExecReadSuccess(
       encodeString(READ_SUCCESS_CONTENT, content),
       encodeUInt32Field(READ_SUCCESS_TOTAL_LINES, content ? content.split("\n").length : 0),
       encodeUInt32Field(READ_SUCCESS_FILE_SIZE, Buffer.byteLength(content, "utf8")),
+      // The client already cut the requested offset/limit. Without this flag
+      // Cursor treats the slice as the whole file and applies the range again,
+      // so the model receives nothing and keeps reading.
+      ...(rangeApplied ? [encodeBoolField(READ_SUCCESS_RANGE_APPLIED, true)] : []),
     ]),
   ]);
   return wrapExecClientMessage(execMsgId, execId, ECM_READ_RESULT, success);
