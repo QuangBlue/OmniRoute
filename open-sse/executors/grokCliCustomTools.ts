@@ -257,34 +257,41 @@ function createInputDecoder() {
   let escape = "";
   let highSurrogate = "";
 
-  const decodeStringChar = (ch: string): string => {
-    if (escape) {
-      escape += ch;
-      if (escape[1] === "u") {
-        if (escape.length < 6) return "";
-        const code = Number.parseInt(escape.slice(2), 16);
-        escape = "";
-        if (Number.isNaN(code)) {
-          mode = "raw";
-          return "";
-        }
-        const decoded = String.fromCharCode(code);
-        if (code >= 0xd800 && code <= 0xdbff) {
-          highSurrogate = decoded;
-          return "";
-        }
-        const out = highSurrogate + decoded;
-        highSurrogate = "";
-        return out;
-      }
-      const decoded = JSON_ESCAPES[escape[1]];
+  /** Join a decoded UTF-16 unit with a pending high surrogate (held back until paired). */
+  const emitUnit = (decoded: string, code: number): string => {
+    if (code >= 0xd800 && code <= 0xdbff) {
+      highSurrogate = decoded;
+      return "";
+    }
+    const out = highSurrogate + decoded;
+    highSurrogate = "";
+    return out;
+  };
+
+  /** Continue a `\…` escape with one more char; "" while it is still incomplete. */
+  const decodeEscapeChar = (ch: string): string => {
+    escape += ch;
+    if (escape[1] === "u") {
+      if (escape.length < 6) return "";
+      const code = Number.parseInt(escape.slice(2), 16);
       escape = "";
-      if (decoded === undefined) {
+      if (Number.isNaN(code)) {
         mode = "raw";
         return "";
       }
-      return decoded;
+      return emitUnit(String.fromCharCode(code), code);
     }
+    const decoded = JSON_ESCAPES[escape[1]];
+    escape = "";
+    if (decoded === undefined) {
+      mode = "raw";
+      return "";
+    }
+    return decoded;
+  };
+
+  const decodeStringChar = (ch: string): string => {
+    if (escape) return decodeEscapeChar(ch);
     if (ch === "\\") {
       escape = ch;
       return "";
@@ -298,6 +305,23 @@ function createInputDecoder() {
     return out;
   };
 
+  /** Match one char of the `{"input":"` prefix; false once the shape is ruled out. */
+  const consumePrefixChar = (ch: string): boolean => {
+    const expected = INPUT_PREFIX[token];
+    if (tokenChar === 0 && /\s/.test(ch)) return true;
+    if (ch !== expected[tokenChar]) {
+      mode = "raw";
+      return false;
+    }
+    tokenChar++;
+    if (tokenChar === expected.length) {
+      token++;
+      tokenChar = 0;
+      if (token === INPUT_PREFIX.length) mode = "string";
+    }
+    return true;
+  };
+
   return {
     get failed() {
       return mode === "raw";
@@ -305,24 +329,8 @@ function createInputDecoder() {
     push(chunk: string): string {
       let out = "";
       for (const ch of chunk) {
-        if (mode === "string") {
-          out += decodeStringChar(ch);
-        } else if (mode === "prefix") {
-          const expected = INPUT_PREFIX[token];
-          if (tokenChar === 0 && /\s/.test(ch)) continue;
-          if (ch !== expected[tokenChar]) {
-            mode = "raw";
-            break;
-          }
-          tokenChar++;
-          if (tokenChar === expected.length) {
-            token++;
-            tokenChar = 0;
-            if (token === INPUT_PREFIX.length) mode = "string";
-          }
-        } else {
-          break;
-        }
+        if (mode === "string") out += decodeStringChar(ch);
+        else if (mode !== "prefix" || !consumePrefixChar(ch)) break;
       }
       return mode === "raw" ? "" : out;
     },
@@ -364,112 +372,118 @@ function callIds(call: CustomCallState): JsonRecord {
   return ids;
 }
 
+function findCall(calls: CustomCallState[], payload: JsonRecord): CustomCallState | undefined {
+  return calls.find(
+    (call) =>
+      (typeof payload.item_id === "string" && call.itemId === payload.item_id) ||
+      (typeof payload.output_index === "number" && call.outputIndex === payload.output_index)
+  );
+}
+
+/** Find a tracked call that has not emitted its `.done` yet. */
+function findOpenCall(calls: CustomCallState[], payload: JsonRecord): CustomCallState | null {
+  const call = findCall(calls, payload);
+  return call && !call.done ? call : null;
+}
+
+/** `.delta` for whatever the incremental decode did not emit, then `.done`. */
+function finishCall(block: string, call: CustomCallState, args: unknown, doneSeq: unknown): string {
+  call.done = true;
+  // An empty or missing `arguments` falls back to the deltas already received.
+  const input = rawCustomInput(typeof args === "string" && args !== "" ? args : call.args);
+  const ids = callIds(call);
+  let out = "";
+  const rest = input.startsWith(call.emitted) ? input.slice(call.emitted.length) : "";
+  if (rest) {
+    // No sequence_number: this event has no upstream counterpart, and a borrowed
+    // number could fall under the passthrough watermark and be dropped.
+    out += renderBlock(block, {
+      type: "response.custom_tool_call_input.delta",
+      ...ids,
+      delta: rest,
+    });
+  }
+  return (
+    out +
+    renderBlock(block, {
+      type: "response.custom_tool_call_input.done",
+      ...(typeof doneSeq === "number" ? { sequence_number: doneSeq } : {}),
+      ...ids,
+      input,
+    })
+  );
+}
+
+/** The JSON payload of an SSE block's data line, or null when there is none to rewrite. */
+function parseBlockPayload(block: string): JsonRecord | null {
+  const match = SSE_DATA_LINE_RE.exec(block);
+  if (!match || !match[1] || match[1] === "[DONE]") return null;
+  try {
+    const payload: unknown = JSON.parse(match[1]);
+    return isRecord(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function trackAddedCall(calls: CustomCallState[], payload: JsonRecord & { item: JsonRecord }) {
+  calls.push({
+    itemId: typeof payload.item.id === "string" ? payload.item.id : null,
+    outputIndex: typeof payload.output_index === "number" ? payload.output_index : null,
+    decoder: createInputDecoder(),
+    args: "",
+    emitted: "",
+    done: false,
+  });
+}
+
+/** Re-emit one argument delta as decoded raw input (or a keepalive comment while undecided). */
+function rewriteArgumentsDelta(block: string, call: CustomCallState, payload: JsonRecord): string {
+  const chunk = typeof payload.delta === "string" ? payload.delta : "";
+  call.args += chunk;
+  const text = call.decoder.push(chunk);
+  if (!text || call.decoder.failed) {
+    // Keep bytes flowing for idle watchdogs; comment lines are not forwarded.
+    return SSE_COMMENT_BLOCK;
+  }
+  call.emitted += text;
+  return renderBlock(block, {
+    type: "response.custom_tool_call_input.delta",
+    ...(payload.sequence_number !== undefined ? { sequence_number: payload.sequence_number } : {}),
+    ...callIds(call),
+    delta: text,
+  });
+}
+
 /** Per-stream rewriter: argument events carry only item_id / output_index, so track calls. */
 function createSseBlockRewriter(customTools: GrokBuildCustomTools) {
   const calls: CustomCallState[] = [];
 
-  const findCall = (payload: JsonRecord): CustomCallState | undefined =>
-    calls.find(
-      (call) =>
-        (typeof payload.item_id === "string" && call.itemId === payload.item_id) ||
-        (typeof payload.output_index === "number" && call.outputIndex === payload.output_index)
-    );
-
-  /** `.delta` for whatever the incremental decode did not emit, then `.done`. */
-  const finishCall = (
-    block: string,
-    call: CustomCallState,
-    args: unknown,
-    doneSeq: unknown
-  ): string => {
-    call.done = true;
-    // An empty or missing `arguments` falls back to the deltas already received.
-    const input = rawCustomInput(typeof args === "string" && args !== "" ? args : call.args);
-    const ids = callIds(call);
-    let out = "";
-    const rest = input.startsWith(call.emitted) ? input.slice(call.emitted.length) : "";
-    if (rest) {
-      // No sequence_number: this event has no upstream counterpart, and a borrowed
-      // number could fall under the passthrough watermark and be dropped.
-      out += renderBlock(block, {
-        type: "response.custom_tool_call_input.delta",
-        ...ids,
-        delta: rest,
-      });
-    }
-    return (
-      out +
-      renderBlock(block, {
-        type: "response.custom_tool_call_input.done",
-        ...(typeof doneSeq === "number" ? { sequence_number: doneSeq } : {}),
-        ...ids,
-        input,
-      })
-    );
-  };
-
   return (block: string): string => {
-    const match = SSE_DATA_LINE_RE.exec(block);
-    if (!match || !match[1] || match[1] === "[DONE]") return block;
-    let payload: unknown;
-    try {
-      payload = JSON.parse(match[1]);
-    } catch {
-      return block;
-    }
-    if (!isRecord(payload)) return block;
+    const payload = parseBlockPayload(block);
+    if (!payload) return block;
+    const isCustomItem = isCustomToolCall(payload.item, customTools);
 
-    if (
-      payload.type === "response.output_item.added" &&
-      isCustomToolCall(payload.item, customTools)
-    ) {
-      calls.push({
-        itemId: typeof payload.item.id === "string" ? payload.item.id : null,
-        outputIndex: typeof payload.output_index === "number" ? payload.output_index : null,
-        decoder: createInputDecoder(),
-        args: "",
-        emitted: "",
-        done: false,
-      });
+    if (payload.type === "response.output_item.added" && isCustomItem) {
+      trackAddedCall(calls, payload as JsonRecord & { item: JsonRecord });
     }
 
     if (payload.type === "response.function_call_arguments.delta") {
-      const call = findCall(payload);
-      if (call && !call.done) {
-        const chunk = typeof payload.delta === "string" ? payload.delta : "";
-        call.args += chunk;
-        const text = call.decoder.push(chunk);
-        if (!text || call.decoder.failed) {
-          // Keep bytes flowing for idle watchdogs; comment lines are not forwarded.
-          return SSE_COMMENT_BLOCK;
-        }
-        call.emitted += text;
-        return renderBlock(block, {
-          type: "response.custom_tool_call_input.delta",
-          ...(payload.sequence_number !== undefined
-            ? { sequence_number: payload.sequence_number }
-            : {}),
-          ...callIds(call),
-          delta: text,
-        });
-      }
+      const call = findOpenCall(calls, payload);
+      if (call) return rewriteArgumentsDelta(block, call, payload);
     }
 
     if (payload.type === "response.function_call_arguments.done") {
-      const call = findCall(payload);
-      if (call && !call.done) {
-        return finishCall(block, call, payload.arguments, payload.sequence_number);
-      }
+      const call = findOpenCall(calls, payload);
+      if (call) return finishCall(block, call, payload.arguments, payload.sequence_number);
     }
 
     // A call that ends without `arguments.done` still owes the client its `.done`.
     let prefix = "";
-    if (
-      payload.type === "response.output_item.done" &&
-      isCustomToolCall(payload.item, customTools)
-    ) {
-      const call = findCall(payload);
-      if (call && !call.done) prefix = finishCall(block, call, payload.item.arguments, undefined);
+    if (payload.type === "response.output_item.done" && isCustomItem) {
+      const call = findOpenCall(calls, payload);
+      const item = payload.item as JsonRecord;
+      if (call) prefix = finishCall(block, call, item.arguments, undefined);
     }
 
     return restorePayload(payload, customTools)
