@@ -1,0 +1,1 @@
+- **fix(cursor):** ranged file reads bridged to the client no longer come back empty — the `ReadSuccess` now sets `range_applied`, so Cursor stops re-applying `offset`/`limit` to the already-sliced content and the model stops re-reading the file ([#15117](https://github.com/diegosouzapw/OmniRoute/pull/15117)).
