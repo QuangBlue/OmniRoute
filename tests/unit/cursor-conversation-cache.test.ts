@@ -79,7 +79,13 @@ test("decodeAgentServerMessage reads TurnEndedUpdate token counts", () => {
   assert.deepEqual(deltas, [
     {
       kind: "turn_ended",
-      usage: { input: 56201, output: 64, cacheRead: 56192, cacheWrite: 0, reasoning: 26 },
+      usage: {
+        inputTokens: 56201,
+        outputTokens: 64,
+        cacheReadTokens: 56192,
+        cacheWriteTokens: undefined,
+        reasoningTokens: 26,
+      },
     },
   ]);
 });
@@ -251,8 +257,15 @@ test("a malformed or input-less TurnEndedUpdate still ends the turn", () => {
   // Truncated length-delimited field inside turn_ended.
   const broken = lenPrefixed(1, lenPrefixed(14, Buffer.from([0x0a, 0x7f])));
   assert.deepEqual(decodeAgentServerMessage(broken), [{ kind: "turn_ended" }]);
+  // Output-only usage decodes, but buildCursorUsage still estimates the prompt.
   const outputOnly = lenPrefixed(1, lenPrefixed(14, varintField(2, 50)));
-  assert.deepEqual(decodeAgentServerMessage(outputOnly), [{ kind: "turn_ended" }]);
+  const [ended] = decodeAgentServerMessage(outputOnly);
+  assert.equal(ended.kind, "turn_ended");
+  const ctx = newStreamCtx("auto", () => {});
+  processFrame(outputOnly, ctx, new Set());
+  const usage = buildCursorUsage(ctx, SAMPLE_BODY) as Record<string, unknown>;
+  assert.equal(usage.completion_tokens, 50);
+  assert.equal(usage.estimated, true);
 });
 
 test("a malformed ttft_breakdown does not drop the co-located update", () => {
