@@ -1203,6 +1203,8 @@
     "batchGroup": "Procesare în lot",
     "homeSubtitle": "Prezentare generală a tabloului de bord",
     "providersSubtitle": "Gestionarea furnizorilor AI",
+    "modelCatalog": "Catalog de modele",
+    "modelCatalogSubtitle": "Răsfoiește modelele tuturor furnizorilor",
     "quotaTrackerSubtitle": "Urmărirea limitelor de utilizare",
     "providerQuotaSubtitle": "Urmărirea limitelor de utilizare ale furnizorului",
     "runtimeSubtitle": "Reziliență și sesiuni în timp real",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "Pachet gratuit ($0)",
-    "templateFreeStackDesc": "Distribuție round-robin între toți furnizorii gratuiți: Kiro (Claude), Qoder (5 modele), Qwen (4 modele). Cost zero, programarea nu se oprește niciodată.",
+    "templateFreeStackDesc": "Distribuție round-robin între toți furnizorii gratuiți: Antigravity (Gemini), Kiro (Claude), Qoder (3 modele), NVIDIA, Groq. Cost zero, programarea nu se oprește niciodată.",
     "auto": "Auto Combo",
     "autoDesc": "Self-healing smart routing pool (Performance optimized)",
     "lkgp": "Modul LKGP",
@@ -11521,6 +11523,7 @@
       "output": "Ieșire",
       "totalOut": "Total Ieșire: {value}",
       "reasoning": "Raționament: {value}",
+      "reasoningObserved": "{value} · {chars} caractere observate",
       "requestedModel": "Model Solicitat",
       "requestProtocol": "Protocol Req",
       "cacheSource": "Sursă Cache",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "Moștenește conexiunea: {host}",
     "inheritedPool": "Moștenește pool-ul de conexiuni ({count})",
     "poolEmptyBlocked": "Pool gol — cererile eșuează (nu direct)",
-    "directEgress": "Direct (fără proxy)"
+    "directEgress": "Direct (fără proxy)",
+    "ownProxy": "Proxy propriu"
   },
   "gamification": {
     "leaderboardScopes": {

@@ -1203,6 +1203,8 @@
     "batchGroup": "Eräajo",
     "homeSubtitle": "Koontinäytön yleiskatsaus",
     "providersSubtitle": "Hallinnoi tekoälypalveluntarjoajia",
+    "modelCatalog": "Mallikatalogi",
+    "modelCatalogSubtitle": "Selaa malleja eri palveluntarjoajilta",
     "quotaTrackerSubtitle": "Seuraa käyttörajoja",
     "providerQuotaSubtitle": "Seuraa palveluntarjoajien käyttörajoja",
     "runtimeSubtitle": "Reaaliaikainen vikasietoisuus ja istunnot",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "Ilmainen pino ($0)",
-    "templateFreeStackDesc": "Vuorottelu kaikkien ilmaisten palveluntarjoajien välillä: Kiro (Claude), Qoder (5 mallia), Qwen (4 mallia). Täysin ilmainen, koodaus ei keskeydy koskaan.",
+    "templateFreeStackDesc": "Vuorottelu kaikkien ilmaisten palveluntarjoajien välillä: Antigravity (Gemini), Kiro (Claude), Qoder (3 mallia), NVIDIA, Groq. Täysin ilmainen, koodaus ei keskeydy koskaan.",
     "auto": "Auto Combo",
     "autoDesc": "Self-healing smart routing pool (Performance optimized)",
     "lkgp": "LKGP-tila",
@@ -11521,6 +11523,7 @@
       "output": "Tulostus",
       "totalOut": "Yhteensä ulos: {value}",
       "reasoning": "Pohdinta: {value}",
+      "reasoningObserved": "{value} · havaittu {chars} merkkiä",
       "requestedModel": "Pyydetty Malli",
       "requestProtocol": "Req-protokolla",
       "cacheSource": "Välimuisti Lähde",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "Perii yhteyden: {host}",
     "inheritedPool": "Perii yhteyspoolin ({count})",
     "poolEmptyBlocked": "Pooli tyhjä — pyynnöt epäonnistuvat (ei suoraan)",
-    "directEgress": "Suora (ei välityspalvelinta)"
+    "directEgress": "Suora (ei välityspalvelinta)",
+    "ownProxy": "Oma välityspalvelin"
   },
   "gamification": {
     "leaderboardScopes": {

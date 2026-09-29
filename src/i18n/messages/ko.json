@@ -1203,6 +1203,8 @@
     "batchGroup": "일괄 처리",
     "homeSubtitle": "대시보드 개요",
     "providersSubtitle": "AI 제공업체 관리",
+    "modelCatalog": "모델 카탈로그",
+    "modelCatalogSubtitle": "여러 제공업체의 모델 둘러보기",
     "quotaTrackerSubtitle": "사용량 한도 추적",
     "providerQuotaSubtitle": "제공업체 사용량 한도 추적",
     "runtimeSubtitle": "실시간 복원력 및 세션",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "무료 스택 ($0)",
-    "templateFreeStackDesc": "모든 무료 제공업체에 라운드 로빈 방식으로 분배합니다: Kiro (Claude), Qoder (5개 모델), Qwen (4개 모델). 비용은 전혀 들지 않으며 코딩이 중단되지 않습니다.",
+    "templateFreeStackDesc": "모든 무료 제공업체에 라운드 로빈 방식으로 분배합니다: Antigravity (Gemini), Kiro (Claude), Qoder (3개 모델), NVIDIA, Groq. 비용은 전혀 들지 않으며 코딩이 중단되지 않습니다.",
     "auto": "Auto Combo",
     "autoDesc": "Self-healing smart routing pool (Performance optimized)",
     "lkgp": "LKGP 모드",
@@ -11521,6 +11523,7 @@
       "output": "출력",
       "totalOut": "총 출금: {value}",
       "reasoning": "추론: {value}",
+      "reasoningObserved": "{value} · {chars}자 관측됨",
       "requestedModel": "요청된 모델",
       "requestProtocol": "요청 프로토콜",
       "cacheSource": "캐시 소스",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "연결 상속: {host}",
     "inheritedPool": "연결 풀 상속({count})",
     "poolEmptyBlocked": "풀 비어 있음 — 요청 실패(직접 아님)",
-    "directEgress": "직접(프록시 없음)"
+    "directEgress": "직접(프록시 없음)",
+    "ownProxy": "자체 프록시"
   },
   "gamification": {
     "leaderboardScopes": {

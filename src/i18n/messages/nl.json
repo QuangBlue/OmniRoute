@@ -1203,6 +1203,8 @@
     "batchGroup": "Batch",
     "homeSubtitle": "Dashboardoverzicht",
     "providersSubtitle": "AI-providers beheren",
+    "modelCatalog": "Modelcatalogus",
+    "modelCatalogSubtitle": "Blader door modellen van alle providers",
     "quotaTrackerSubtitle": "Gebruikslimieten bijhouden",
     "providerQuotaSubtitle": "Gebruikslimieten van providers bijhouden",
     "runtimeSubtitle": "Realtime veerkracht en sessies",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "Gratis stack ($0)",
-    "templateFreeStackDesc": "Round-robin over alle gratis providers: Kiro (Claude), Qoder (5 modellen), Qwen (4 modellen). Kost niets en blijft altijd coderen.",
+    "templateFreeStackDesc": "Round-robin over alle gratis providers: Antigravity (Gemini), Kiro (Claude), Qoder (3 modellen), NVIDIA, Groq. Kost niets en blijft altijd coderen.",
     "auto": "Auto Combo",
     "autoDesc": "Self-healing smart routing pool (Performance optimized)",
     "lkgp": "LKGP-modus",
@@ -11521,6 +11523,7 @@
       "output": "Uitvoer",
       "totalOut": "Totaal Uit: {value}",
       "reasoning": "Redenering: {value}",
+      "reasoningObserved": "{value} · {chars} tekens waargenomen",
       "requestedModel": "Aangevraagd Model",
       "requestProtocol": "Verzoekprotocol",
       "cacheSource": "Cachebron",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "Erft verbinding: {host}",
     "inheritedPool": "Erft verbindingspool ({count})",
     "poolEmptyBlocked": "Pool leeg — verzoeken mislukken (niet direct)",
-    "directEgress": "Direct (geen proxy)"
+    "directEgress": "Direct (geen proxy)",
+    "ownProxy": "Eigen proxy"
   },
   "gamification": {
     "leaderboardScopes": {

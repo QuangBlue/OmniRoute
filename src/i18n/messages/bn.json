@@ -1203,6 +1203,8 @@
     "batchGroup": "ব্যাচ",
     "homeSubtitle": "ড্যাশবোর্ডের সারসংক্ষেপ",
     "providersSubtitle": "AI প্রোভাইডার পরিচালনা করুন",
+    "modelCatalog": "মডেল ক্যাটালগ",
+    "modelCatalogSubtitle": "প্রদানকারীদের মধ্যে মডেল ব্রাউজ করুন",
     "quotaTrackerSubtitle": "ব্যবহারের সীমা ট্র্যাক করুন",
     "providerQuotaSubtitle": "প্রোভাইডারের ব্যবহারের সীমা ট্র্যাক করুন",
     "runtimeSubtitle": "রিয়েল-টাইম সহনশীলতা ও সেশন",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "বিনামূল্যের স্ট্যাক ($0)",
-    "templateFreeStackDesc": "সব বিনামূল্যের প্রদানকারীর মধ্যে রাউন্ড-রবিন: Kiro (Claude), Qoder (5 মডেল), Qwen (4 মডেল)। কোনো খরচ নেই, কোডিং কখনো থামে না।",
+    "templateFreeStackDesc": "সব বিনামূল্যের প্রদানকারীর মধ্যে রাউন্ড-রবিন: Antigravity (Gemini), Kiro (Claude), Qoder (3 মডেল), NVIDIA, Groq। কোনো খরচ নেই, কোডিং কখনো থামে না।",
     "auto": "বুদ্ধিমান স্বয়ংক্রিয় ব্যবস্থা",
     "autoDesc": "বহু-উপাদানভিত্তিক স্কোরিংসহ স্বয়ংক্রিয়ভাবে পুনরুদ্ধারক্ষম স্মার্ট রাউটিং পুল",
     "lkgp": "LKGP মোড",
@@ -11521,6 +11523,7 @@
       "output": "আউটপুট",
       "totalOut": "মোট আউট: {value}",
       "reasoning": "কারণ: {value}",
+      "reasoningObserved": "{value} · {chars}টি অক্ষর পর্যবেক্ষিত",
       "requestedModel": "অনুরোধ করা মডেল",
       "requestProtocol": "রেক প্রোটোকল",
       "cacheSource": "ক্যাশ সোর্স",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "সংযোগ থেকে উত্তরাধিকার: {host}",
     "inheritedPool": "সংযোগ পুল থেকে উত্তরাধিকার ({count})",
     "poolEmptyBlocked": "পুল খালি — অনুরোধ ব্যর্থ হয় (সরাসরি নয়)",
-    "directEgress": "সরাসরি (প্রক্সি ছাড়া)"
+    "directEgress": "সরাসরি (প্রক্সি ছাড়া)",
+    "ownProxy": "নিজস্ব প্রক্সি"
   },
   "gamification": {
     "leaderboardScopes": {

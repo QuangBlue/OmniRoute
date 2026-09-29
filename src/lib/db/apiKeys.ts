@@ -11,6 +11,7 @@ import { invalidateReasoningRoutingRuleCache } from "./reasoningRoutingRules";
 import { getKeyGroupsForApiKey, checkKeyModelAccess } from "./apiKeyGroups";
 import { API_KEY_COLUMN_FALLBACKS } from "./apiKeyColumnFallbacks";
 import { SYNTHETIC_ENV_API_KEY_ID } from "@/shared/constants/apiKeyIdentities";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import {
   appendUsageLimitUpdates,
   hasUsageLimitUpdate,
@@ -19,6 +20,7 @@ import {
 import { setNoLog } from "../compliance/noLog";
 import { resolveModelAlias } from "@omniroute/open-sse/services/modelDeprecation.ts";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
+import { isSelfLoopBearer, selfLoopKeyOverrides } from "./apiKeys/selfLoopKey";
 import {
   findPublishedModel,
   isDeniedUnderCanonicalProvider,
@@ -284,7 +286,7 @@ function toRecord(value: unknown): JsonRecord {
 
 function isConfiguredEnvApiKey(key: string): boolean {
   const envKey = process.env.OMNIROUTE_API_KEY || process.env.ROUTER_API_KEY;
-  return Boolean(envKey && key === envKey);
+  return Boolean(envKey && timingSafeCompare(key, envKey));
 }
 
 function isRedisAuthCacheEnabled(): boolean {
@@ -1268,7 +1270,7 @@ export async function setApiKeyExpiry(id: string, expiresAt: string | null): Pro
 export async function validateApiKey(key: string | null | undefined) {
   if (!key || typeof key !== "string") return false;
 
-  if (isConfiguredEnvApiKey(key)) return true;
+  if (isConfiguredEnvApiKey(key) || isSelfLoopBearer(key)) return true;
 
   const now = Date.now();
   const hashedKey = await hashKey(key);
@@ -1373,7 +1375,7 @@ export async function getApiKeyMetadata(
   const now = Date.now();
 
   // persistent env-var key support (persistent passthrough keys) (#1350)
-  if (isConfiguredEnvApiKey(key)) {
+  if (isConfiguredEnvApiKey(key) || isSelfLoopBearer(key)) {
     // ─── Env-key management-scope bypass ──────────────────────────────────
     // The deployment-time env key (`OMNIROUTE_API_KEY` / `ROUTER_API_KEY`)
     // is granted the "manage" scope unconditionally. This is intentional:
@@ -1434,6 +1436,7 @@ export async function getApiKeyMetadata(
       compressionEnabled: true,
       allowAutoCombos: true,
       catalogScope: "all",
+      ...selfLoopKeyOverrides(key),
     };
   }
 

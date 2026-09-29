@@ -1203,6 +1203,8 @@
     "batchGroup": "批處理",
     "homeSubtitle": "儀表盤概覽",
     "providersSubtitle": "管理 AI 提供者",
+    "modelCatalog": "模型目錄",
+    "modelCatalogSubtitle": "瀏覽各提供者的模型",
     "quotaTrackerSubtitle": "跟蹤使用限制",
     "providerQuotaSubtitle": "跟蹤提供者使用限制",
     "runtimeSubtitle": "即時彈性與會話",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "免費棧（$0）",
-    "templateFreeStackDesc": "在所有免費提供者之間進行輪詢：Kiro（Claude）、Qoder（5 個模型）、Qwen（4 個模型）。零成本，編碼不中斷。",
+    "templateFreeStackDesc": "在所有免費提供者之間進行輪詢：Antigravity（Gemini）、Kiro（Claude）、Qoder（3 個模型）、NVIDIA、Groq。零成本，編碼不中斷。",
     "auto": "自動組合",
     "autoDesc": "自愈型智慧路由池（效能最佳化）",
     "lkgp": "LKGP 模式",
@@ -11521,6 +11523,7 @@
       "output": "輸出",
       "totalOut": "總支出: {value}",
       "reasoning": "推理：{value}",
+      "reasoningObserved": "{value} · 觀測到 {chars} 個字元",
       "requestedModel": "請求的模型",
       "requestProtocol": "需求協議",
       "cacheSource": "快取來源",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "繼承連線:{host}",
     "inheritedPool": "繼承連線集區({count})",
     "poolEmptyBlocked": "集區為空——請求將失敗(非直連)",
-    "directEgress": "直連(無代理)"
+    "directEgress": "直連(無代理)",
+    "ownProxy": "自有代理"
   },
   "gamification": {
     "leaderboardScopes": {

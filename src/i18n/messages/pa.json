@@ -1203,6 +1203,8 @@
     "batchGroup": "ਬੈਚ",
     "homeSubtitle": "ਡੈਸ਼ਬੋਰਡ ਦੀ ਸੰਖੇਪ ਜਾਣਕਾਰੀ",
     "providersSubtitle": "AI ਪ੍ਰਦਾਤਿਆਂ ਦਾ ਪ੍ਰਬੰਧਨ ਕਰੋ",
+    "modelCatalog": "ਮਾਡਲ ਕੈਟਾਲਾਗ",
+    "modelCatalogSubtitle": "ਸਾਰੇ ਪ੍ਰਦਾਤਿਆਂ ਦੇ ਮਾਡਲ ਬ੍ਰਾਊਜ਼ ਕਰੋ",
     "quotaTrackerSubtitle": "ਵਰਤੋਂ ਦੀਆਂ ਸੀਮਾਵਾਂ ਟ੍ਰੈਕ ਕਰੋ",
     "providerQuotaSubtitle": "ਪ੍ਰਦਾਤਾ ਦੀਆਂ ਵਰਤੋਂ ਸੀਮਾਵਾਂ ਟ੍ਰੈਕ ਕਰੋ",
     "runtimeSubtitle": "ਰੀਅਲ-ਟਾਈਮ ਲਚਕੀਲਾਪਣ ਅਤੇ ਸੈਸ਼ਨ",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "ਮੁਫ਼ਤ ਸਟੈਕ ($0)",
-    "templateFreeStackDesc": "ਸਾਰੇ ਮੁਫ਼ਤ ਪ੍ਰਦਾਤਾਵਾਂ ਵਿੱਚ ਰਾਊਂਡ-ਰੌਬਿਨ: Kiro (Claude), Qoder (5 ਮਾਡਲ), Qwen (4 ਮਾਡਲ)। ਕੋਈ ਲਾਗਤ ਨਹੀਂ, ਕੋਡਿੰਗ ਕਦੇ ਨਹੀਂ ਰੁਕਦੀ।",
+    "templateFreeStackDesc": "ਸਾਰੇ ਮੁਫ਼ਤ ਪ੍ਰਦਾਤਾਵਾਂ ਵਿੱਚ ਰਾਊਂਡ-ਰੌਬਿਨ: Antigravity (Gemini), Kiro (Claude), Qoder (3 ਮਾਡਲ), NVIDIA, Groq। ਕੋਈ ਲਾਗਤ ਨਹੀਂ, ਕੋਡਿੰਗ ਕਦੇ ਨਹੀਂ ਰੁਕਦੀ।",
     "auto": "ਬੁੱਧੀਮਾਨ ਆਟੋ",
     "autoDesc": "ਆਪਣੇ ਆਪ ਠੀਕ ਹੋਣ ਵਾਲਾ, ਬਹੁ-ਕਾਰਕ ਸਕੋਰਿੰਗ ਨਾਲ ਸਮਾਰਟ ਰੂਟਿੰਗ ਪੂਲ",
     "lkgp": "LKGP ਮੋਡ",
@@ -11521,6 +11523,7 @@
       "output": "ਆਉਟਪੁੱਟ",
       "totalOut": "ਕੁੱਲ ਆਉਟਪੁੱਟ: {value}",
       "reasoning": "ਤਰਕ: {value}",
+      "reasoningObserved": "{value} · {chars} ਅੱਖਰ ਦੇਖੇ ਗਏ",
       "requestedModel": "ਬੇਨਤੀ ਕੀਤਾ ਗਿਆ ਮਾਡਲ",
       "requestProtocol": "ਬੇਨਤੀ ਪ੍ਰੋਟੋਕੋਲ",
       "cacheSource": "ਕੈਸ਼ ਸਰੋਤ",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "ਕਨੈਕਸ਼ਨ ਵਿਰਾਸਤ: {host}",
     "inheritedPool": "ਕਨੈਕਸ਼ਨ ਪੂਲ ਵਿਰਾਸਤ ({count})",
     "poolEmptyBlocked": "ਪੂਲ ਖਾਲੀ — ਬੇਨਤੀਆਂ ਅਸਫਲ (ਸਿੱਧਾ ਨਹੀਂ)",
-    "directEgress": "ਸਿੱਧਾ (ਬਿਨਾਂ ਪ੍ਰੌਕਸੀ)"
+    "directEgress": "ਸਿੱਧਾ (ਬਿਨਾਂ ਪ੍ਰੌਕਸੀ)",
+    "ownProxy": "ਆਪਣੀ ਪ੍ਰੌਕਸੀ"
   },
   "gamification": {
     "leaderboardScopes": {

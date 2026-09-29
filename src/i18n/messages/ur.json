@@ -1203,6 +1203,8 @@
     "batchGroup": "بیچ",
     "homeSubtitle": "ڈیش بورڈ کا جائزہ",
     "providersSubtitle": "AI فراہم کنندگان کا نظم کریں",
+    "modelCatalog": "ماڈل کیٹلاگ",
+    "modelCatalogSubtitle": "فراہم کنندگان میں ماڈلز براؤز کریں",
     "quotaTrackerSubtitle": "استعمال کی حدود ٹریک کریں",
     "providerQuotaSubtitle": "فراہم کنندہ کے استعمال کی حدود ٹریک کریں",
     "runtimeSubtitle": "ریئل ٹائم لچک اور سیشنز",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "مفت اسٹیک ($0)",
-    "templateFreeStackDesc": "تمام مفت فراہم کنندگان میں باری باری تقسیم: Kiro (Claude)، Qoder (5 ماڈلز)، Qwen (4 ماڈلز)۔ کوئی لاگت نہیں، کوڈنگ کبھی نہیں رکتی۔",
+    "templateFreeStackDesc": "تمام مفت فراہم کنندگان میں باری باری تقسیم: Antigravity (Gemini)، Kiro (Claude)، Qoder (3 ماڈلز)، NVIDIA، Groq۔ کوئی لاگت نہیں، کوڈنگ کبھی نہیں رکتی۔",
     "auto": "ذہین آٹو",
     "autoDesc": "کثیر عنصری اسکورنگ کے ساتھ خودکار طور پر بحال ہونے والا اسمارٹ روٹنگ پول",
     "lkgp": "LKGP موڈ",
@@ -11521,6 +11523,7 @@
       "output": "آؤٹ پٹ",
       "totalOut": "کل باہر: {value}",
       "reasoning": "وجوہات: {value}",
+      "reasoningObserved": "{value} · {chars} حروف مشاہدہ کیے گئے",
       "requestedModel": "درخواست کردہ ماڈل",
       "requestProtocol": "درخواست پروٹوکول",
       "cacheSource": "کیچ ماخذ",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "کنکشن وراثت میں: {host}",
     "inheritedPool": "کنکشن پول وراثت میں ({count})",
     "poolEmptyBlocked": "پول خالی — درخواستیں ناکام ہوتی ہیں (براہ راست نہیں)",
-    "directEgress": "براہ راست (بغیر پراکسی)"
+    "directEgress": "براہ راست (بغیر پراکسی)",
+    "ownProxy": "اپنی پراکسی"
   },
   "gamification": {
     "leaderboardScopes": {
