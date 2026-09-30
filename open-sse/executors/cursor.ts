@@ -275,8 +275,8 @@ export type StreamCtx = {
       workingDir: string;
       fileText: string;
       returnFileContentAfterWrite?: boolean;
-      /** A held read whose offset/limit was forwarded to the client. */
-      rangeApplied?: boolean;
+      /** The offset/limit of a held read that was forwarded to the client. */
+      readRange?: { offset?: number; limit?: number };
       pattern: string;
       outputMode?: string;
       url?: string;
@@ -714,9 +714,14 @@ export function processFrame(
             command: "command" in event ? event.command : "",
             workingDir: "workingDir" in event ? event.workingDir : "",
             fileText: "fileText" in event ? event.fileText : "",
-            rangeApplied:
+            readRange:
               event.kind === "exec_read" &&
-              ("offset" in bridge.arguments || "limit" in bridge.arguments),
+              ("offset" in bridge.arguments || "limit" in bridge.arguments)
+                ? {
+                    offset: "offset" in bridge.arguments ? event.offset : undefined,
+                    limit: "limit" in bridge.arguments ? event.limit : undefined,
+                  }
+                : undefined,
             returnFileContentAfterWrite:
               event.kind === "exec_write" ? event.returnFileContentAfterWrite : undefined,
             pattern: "pattern" in event ? event.pattern : "",

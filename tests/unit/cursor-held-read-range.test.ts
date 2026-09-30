@@ -77,6 +77,9 @@ test("a ranged held read tells Cursor the client already applied the range", () 
   const { args, fields } = readSuccessFields({ offset: 2001, limit: 2000 });
   assert.deepEqual(args, { filePath: "/repo/huge.py", offset: 2001, limit: 2000 });
   assert.equal(fields.find((f) => f.fieldNumber === 8)?.varint, 1n, "range_applied");
+  // Cursor rejects an offset past total_lines ("Offset 2001 is beyond file
+  // length (2 lines)"), so the count must reach the end of the slice.
+  assert.equal(fields.find((f) => f.fieldNumber === 3)?.varint, 2002n, "total_lines");
   assert.equal(fields.find((f) => f.fieldNumber === 2)?.bytes.toString(), "2001: a\n2002: b");
 });
 
