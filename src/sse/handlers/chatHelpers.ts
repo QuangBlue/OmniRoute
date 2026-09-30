@@ -569,6 +569,7 @@ export async function executeChatWithBreaker({
                 );
                 return;
               }
+              const streamOutputEmitted = failure?.outputEmitted === true;
               await markAccountUnavailable(
                 credentials.connectionId,
                 Number(failure?.status || HTTP_STATUS.BAD_GATEWAY),
@@ -576,7 +577,7 @@ export async function executeChatWithBreaker({
                 provider,
                 model,
                 providerProfile,
-                buildExhaustionOptions(correlationId ?? null, { isCombo })
+                buildExhaustionOptions(correlationId ?? null, { isCombo, streamOutputEmitted })
               );
             },
           })

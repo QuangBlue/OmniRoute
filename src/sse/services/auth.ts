@@ -82,6 +82,7 @@ import {
   isProviderModelUnsupported400,
 } from "@omniroute/open-sse/services/accountFallback.ts";
 import { isSharedWalletCredits402 } from "@omniroute/open-sse/services/accountFallback/sharedWalletCredits.ts";
+import { postOutputFailureReachesLockout } from "@omniroute/open-sse/services/accountFallback/postOutputFailureStreak.ts";
 import { isOpencodeFreeTierRefusalForProvider } from "@omniroute/open-sse/executors/opencodeGeoBlock.ts";
 import { isOpencodeFreeTierSkipped } from "@omniroute/open-sse/services/opencodeFreeTierSkip.ts";
 import { isLocalProvider } from "@omniroute/open-sse/config/providerRegistry.ts";
@@ -195,7 +196,7 @@ import {
   type CredentialLeaseSelectionContext,
 } from "./exclusiveConnectionLeasePolicy";
 import { readHeaderValue, type AuthRequestHeaders } from "./headerReader.ts";
-import { isSyntheticEmptyStreamFailure } from "./syntheticEmptyStream.ts";
+import { isRequestScopedServerFailure } from "./syntheticEmptyStream.ts";
 import {
   getOAuthSessionAvailability,
   reserveOAuthSession,
@@ -2645,23 +2646,15 @@ async function applyEgressIpLockout(
   }
 }
 
+type ExhaustionOptions = NonNullable<Parameters<typeof markAccountUnavailable>[6]>;
+
 /** Build the options for markAccountUnavailable on the chat exhaustion path.
  * Single place that forwards the request id so no chat sender can forget it:
  * every chat caller passes its in-scope id through here. */
 export function buildExhaustionOptions(
   correlationId: string | null,
-  rest: {
-    persistUnavailableState?: boolean;
-    /** Caller is the combo engine — it records its own model-level lockouts. */
-    isCombo?: boolean;
-    headers?: Headers | Record<string, string> | null;
-  } = {}
-): {
-  persistUnavailableState?: boolean;
-  isCombo?: boolean;
-  headers?: Headers | Record<string, string> | null;
-  correlationId: string | null;
-} {
+  rest: Omit<ExhaustionOptions, "correlationId"> = {}
+): ExhaustionOptions & { correlationId: string | null } {
   return { ...rest, correlationId };
 }
 
@@ -2679,6 +2672,7 @@ export async function markAccountUnavailable(
     isCombo?: boolean;
     headers?: Headers | Record<string, string> | null;
     correlationId?: string | null;
+    streamOutputEmitted?: boolean;
   } = {}
 ) {
   const currentMutex = markMutexes.get(connectionId) || Promise.resolve();
@@ -3043,7 +3037,11 @@ export async function markAccountUnavailable(
       // 0 hot-loops the failing upstream (broke resilience-http-e2e on the PR).
       // The empty-stream 502 is synthesized by OmniRoute, not the provider: locking
       // the model benched healthy accounts and emptied the combo (incident 2026-09-21).
-      if (status === 500 || isSyntheticEmptyStreamFailure(status, errorText)) {
+      const exemptAfterOutput =
+        status >= 500 &&
+        options.streamOutputEmitted === true &&
+        !postOutputFailureReachesLockout(provider, connectionId, model);
+      if (isRequestScopedServerFailure(status, errorText, exemptAfterOutput)) {
         updateProviderConnection(connectionId, {
           lastErrorType: reason,
           lastError: `Model ${model} ${reason}`,
@@ -3052,7 +3050,7 @@ export async function markAccountUnavailable(
         }).catch(() => {});
         log.info(
           "AUTH",
-          `Server error for ${provider}:${model} — ${status} ${reason} (no model lockout, connection stays active for sibling models)`,
+          `Server error for ${provider}:${model} — ${status} ${reason}${options.streamOutputEmitted === true ? " after stream output" : ""} (no model lockout, connection stays active for sibling models)`,
           {
             ...(options.correlationId ? { correlationId: options.correlationId } : {}),
           }

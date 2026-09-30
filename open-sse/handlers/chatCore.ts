@@ -157,7 +157,7 @@ import {
   COLORS,
 } from "../utils/stream.ts";
 import { ensureStreamReadiness } from "../utils/streamReadiness.ts";
-import { requestTtftMs } from "../utils/streamTiming.ts";
+import { requestTtftMs, streamEmittedOutput } from "../utils/streamTiming.ts";
 import { resolveSuppressThinkClose, THINKING_MARKER_HEADER } from "../utils/thinkCloseMarker.ts";
 import { resolveStreamReadinessTimeout } from "../utils/streamReadinessPolicy.ts";
 import { resolveAgentGoalPolicy } from "../utils/agentGoalPolicy.ts";
@@ -386,6 +386,7 @@ import {
   recordCoreOwnedAntigravityQuotaState,
   shouldDeferAntigravityQuotaStateToCaller,
 } from "../services/accountFallback.ts";
+import { clearPostOutputFailureStreak } from "../services/accountFallback/postOutputFailureStreak.ts";
 import { saveIdempotency } from "@/lib/idempotencyLayer";
 import {
   isModelUnavailableError,
@@ -6022,6 +6023,7 @@ async function handleChatCoreInner({
     const streamConnectionId = getCurrentConnectionId();
 
     if (normalizedStreamStatus === 200) {
+      clearPostOutputFailureStreak(provider, streamConnectionId, modelInfo.model);
       void maybeSyncClaudeExtraUsageState({
         provider,
         connectionId: streamConnectionId,
@@ -6247,6 +6249,7 @@ async function handleChatCoreInner({
     onStreamComplete,
     persistFailureUsage,
     onStreamFailure,
+    hasEmittedOutput: () => streamEmittedOutput(transformStream),
   });
   const handleStreamFailure = streamFailureFinalizers.handleStreamFailure;
   onPipelineStreamError = streamFailureFinalizers.onPipelineStreamError;
