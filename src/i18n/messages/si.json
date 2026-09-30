@@ -1203,6 +1203,8 @@
     "batchGroup": "කාණ්ඩ සැකසීම",
     "homeSubtitle": "උපකරණ පුවරු සාරාංශය",
     "providersSubtitle": "AI සපයන්නන් කළමනාකරණය කරන්න",
+    "modelCatalog": "මාදිලි නාමාවලිය",
+    "modelCatalogSubtitle": "සපයන්නන් හරහා මාදිලි පිරික්සන්න",
     "quotaTrackerSubtitle": "භාවිත සීමා නිරීක්ෂණය කරන්න",
     "providerQuotaSubtitle": "සපයන්නාගේ භාවිත සීමා නිරීක්ෂණය කරන්න",
     "runtimeSubtitle": "තත්යකාලීන ප්රත්යස්ථතාව සහ සැසි",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "නොමිලේ සංචිතය ($0)",
-    "templateFreeStackDesc": "සියලු නොමිලේ සැපයුම්කරුවන් හරහා අනුක්රමිකව මාරු වන්න: Kiro (Claude), Qoder (මාදිලි 5), Qwen (මාදිලි 4). කිසිදු වියදමක් නැත, කේතනය කිසිදා නවතින්නේ නැත.",
+    "templateFreeStackDesc": "සියලු නොමිලේ සැපයුම්කරුවන් හරහා අනුක්රමිකව මාරු වන්න: Antigravity (Gemini), Kiro (Claude), Qoder (මාදිලි 3), NVIDIA, Groq. කිසිදු වියදමක් නැත, කේතනය කිසිදා නවතින්නේ නැත.",
     "auto": "බුද්ධිමත් ස්වයංක්රීය ක්රමය",
     "autoDesc": "බහු-සාධක ලකුණුකරණය සහිත ස්වයං-ප්රතිසාධන ස්මාර්ට් මාර්ගගත කිරීමේ සංචිතය",
     "lkgp": "LKGP මාදිලිය",
@@ -11520,6 +11522,7 @@
       "compressed": "සම්පීඩිතයි: {from} → {to} ({percent}% ඉතිරි විය)",
       "output": "ප්රතිදානය",
       "totalOut": "මුළු ප්රතිදානය: {value}",
+      "reasoningObserved": "{value} · අක්ෂර {chars}ක් නිරීක්ෂණය විය",
       "reasoning": "තාර්කිකකරණය: {value}",
       "requestedModel": "ඉල්ලා ඇති මාදිලිය",
       "requestProtocol": "ඉල්ලීම් ප්රොටෝකෝලය",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "සම්බන්ධතාව උරුම වේ: {host}",
     "inheritedPool": "සම්බන්ධතා තටාකය උරුම වේ ({count})",
     "poolEmptyBlocked": "තටාකය හිස් — ඉල්ලීම් අසාර්ථකයි (සෘජු නොවේ)",
-    "directEgress": "සෘජු (ප්‍රොක්සි නැතිව)"
+    "directEgress": "සෘජු (ප්‍රොක්සි නැතිව)",
+    "ownProxy": "ස්වකීය ප්‍රොක්සිය"
   },
   "gamification": {
     "leaderboardScopes": {

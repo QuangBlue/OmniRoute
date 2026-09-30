@@ -1203,6 +1203,8 @@
     "batchGroup": "தொகுதி",
     "homeSubtitle": "டாஷ்போர்டு மேலோட்டம்",
     "providersSubtitle": "AI வழங்குநர்களை நிர்வகிக்கவும்",
+    "modelCatalog": "மாடல் பட்டியல்",
+    "modelCatalogSubtitle": "வழங்குநர்கள் முழுவதும் மாடல்களை உலாவுக",
     "quotaTrackerSubtitle": "பயன்பாட்டு வரம்புகளைக் கண்காணிக்கவும்",
     "providerQuotaSubtitle": "வழங்குநரின் பயன்பாட்டு வரம்புகளைக் கண்காணிக்கவும்",
     "runtimeSubtitle": "நிகழ்நேர மீட்சித்திறன் மற்றும் அமர்வுகள்",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "இலவச ஸ்டாக் ($0)",
-    "templateFreeStackDesc": "அனைத்து இலவச வழங்குநர்களிலும் ரவுண்ட்-ராபின் முறையில் வழிமாற்றம்: Kiro (Claude), Qoder (5 மாடல்கள்), Qwen (4 மாடல்கள்). செலவே இல்லை, குறியீடு எழுதுவது ஒருபோதும் நிற்காது.",
+    "templateFreeStackDesc": "அனைத்து இலவச வழங்குநர்களிலும் ரவுண்ட்-ராபின் முறையில் வழிமாற்றம்: Antigravity (Gemini), Kiro (Claude), Qoder (3 மாடல்கள்), NVIDIA, Groq. செலவே இல்லை, குறியீடு எழுதுவது ஒருபோதும் நிற்காது.",
     "auto": "நுண்ணறிவுத் தானியக்கம்",
     "autoDesc": "பல-காரணி மதிப்பீட்டுடன் தானாகச் சீரமைந்துகொள்ளும் ஸ்மார்ட் வழிமாற்றக் குழு",
     "lkgp": "LKGP பயன்முறை",
@@ -11521,6 +11523,7 @@
       "output": "வெளியீடு",
       "totalOut": "மொத்த வெளியீடு: {value}",
       "reasoning": "காரணம்: {value}",
+      "reasoningObserved": "{value} · {chars} எழுத்துகள் கண்டறியப்பட்டன",
       "requestedModel": "கோரிய மாடல்",
       "requestProtocol": "அவசியம் நெறிமுறை",
       "cacheSource": "கேஷ் மூலத்திடம்",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "இணைப்பு மரபுரிமை: {host}",
     "inheritedPool": "இணைப்பு தொகுப்பு மரபுரிமை ({count})",
     "poolEmptyBlocked": "தொகுப்பு காலி — கோரிக்கைகள் தோல்வி (நேரடி அல்ல)",
-    "directEgress": "நேரடி (ப்ராக்ஸி இல்லை)"
+    "directEgress": "நேரடி (ப்ராக்ஸி இல்லை)",
+    "ownProxy": "சொந்த ப்ராக்ஸி"
   },
   "gamification": {
     "leaderboardScopes": {

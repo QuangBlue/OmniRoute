@@ -1203,6 +1203,8 @@
     "batchGroup": "Lott",
     "homeSubtitle": "Ħarsa ġenerali tad-dashboard",
     "providersSubtitle": "Immaniġġja l-fornituri tal-IA",
+    "modelCatalog": "Katalgu tal-mudelli",
+    "modelCatalogSubtitle": "Ibbrawżja mudelli minn fornituri differenti",
     "quotaTrackerSubtitle": "Segwi l-limiti tal-użu",
     "providerQuotaSubtitle": "Segwi l-limiti tal-użu tal-fornituri",
     "runtimeSubtitle": "Reżiljenza u sessjonijiet f'ħin reali",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "Sett Bla Ħlas ($0)",
-    "templateFreeStackDesc": "Rotazzjoni bejn il-fornituri bla ħlas kollha: Kiro (Claude), Qoder (5 mudelli), Qwen (4 mudelli). Bla ebda spiża, u qatt ma jieqaf jikteb il-kodiċi.",
+    "templateFreeStackDesc": "Rotazzjoni bejn il-fornituri bla ħlas kollha: Antigravity (Gemini), Kiro (Claude), Qoder (3 mudelli), NVIDIA, Groq. Bla ebda spiża, u qatt ma jieqaf jikteb il-kodiċi.",
     "auto": "Awtomatiku Intelliġenti",
     "autoDesc": "Grupp intelliġenti ta’ rotot li jirkupra waħdu, b’punteġġ ibbażat fuq diversi fatturi",
     "lkgp": "Modalità LKGP",
@@ -11521,6 +11523,7 @@
       "output": "Ħruġ",
       "totalOut": "Ħruġ totali: {value}",
       "reasoning": "Raġunament: {value}",
+      "reasoningObserved": "{value} · {chars} karattru osservati",
       "requestedModel": "Mudell mitlub",
       "requestProtocol": "Protokoll tat-talba",
       "cacheSource": "Sors tal-cache",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "Jiret il-konnessjoni: {host}",
     "inheritedPool": "Jiret il-pool tal-konnessjonijiet ({count})",
     "poolEmptyBlocked": "Pool vojt — it-talbiet ifallu (mhux dirett)",
-    "directEgress": "Dirett (bla proxy)"
+    "directEgress": "Dirett (bla proxy)",
+    "ownProxy": "Proxy proprju"
   },
   "gamification": {
     "leaderboardScopes": {

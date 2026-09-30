@@ -260,6 +260,29 @@ function writeEffortValue(
   return next;
 }
 
+/**
+ * The effort the outgoing body actually asks for, across all three carriers.
+ * Used by the reactive 4xx probe in `base.ts` to decide which tier to step
+ * down to, so it must report what is on the wire — not what the registry says
+ * the model supports.
+ */
+export function readBodyReasoningEffort(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const effort = readEffortCarriers(body as Record<string, unknown>).effort;
+  return typeof effort === "string" ? effort : null;
+}
+
+/**
+ * Write `value` onto every carrier the body already uses, leaving the shape of
+ * the body untouched — the reactive probe rewrites one field of the request
+ * that is already on its way upstream, so it must not reshape anything else.
+ */
+export function writeBodyReasoningEffort(body: unknown, value: string): unknown {
+  if (!body || typeof body !== "object") return body;
+  const record = body as Record<string, unknown>;
+  return writeEffortValue(record, value, readEffortCarriers(record));
+}
+
 /** Strip the effort field from every carrier that was present. */
 function stripEffortValue(b: Record<string, unknown>, c: EffortCarriers): Record<string, unknown> {
   const next: Record<string, unknown> = { ...b };
@@ -459,7 +482,17 @@ export function sanitizeReasoningEffortForProvider(
   // that providers whose thinking defaults ON actually turn it off.
   // Map both to the closest supported value (`low`) for command-code only;
   // other providers (codex etc.) keep their native `minimal` handling.
-  if (isCommandCodeProvider(provider) && (effortStr === "minimal" || effortStr === "none")) {
+  // Exception: a Responses-shaped body (`input`, no `messages`) is routed to
+  // /provider/v1/responses (#14692), which DOES honor `reasoning.effort: "none"`
+  // (verified live 2026-09-24: reasoning_tokens 0) — keep `none` there, or a
+  // no-thinking request silently turns reasoning back on.
+  const commandCodeResponsesNone =
+    effortStr === "none" && b.input !== undefined && b.messages === undefined;
+  if (
+    isCommandCodeProvider(provider) &&
+    (effortStr === "minimal" || effortStr === "none") &&
+    !commandCodeResponsesNone
+  ) {
     log?.info?.(
       "REASONING_SANITIZE",
       `${provider}/${modelStr}: mapped reasoning_effort ${effortStr} → low`

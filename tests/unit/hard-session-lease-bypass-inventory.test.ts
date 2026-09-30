@@ -126,6 +126,11 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/cloud/auth/route.ts": 1,
     "src/app/api/cloud/credentials/update/route.ts": 1,
     "src/app/api/models/route.ts": 1,
+    // #13487 (61198da9e): Test-all reads the provider's rows once only to reject
+    // with 409 when every connection is disabled — a state read behind the
+    // management route; the per-model probes it dispatches still go through the
+    // fenced chat pipeline, so it never selects a connection itself (class C).
+    "src/app/api/models/test-all/route.ts": 1,
     "src/app/api/monitoring/health/route.ts": 1,
     "src/app/api/oauth/[provider]/[action]/route.ts": 4,
     "src/app/api/oauth/codex/import/route.ts": 1,
@@ -137,6 +142,10 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/provider-nodes/[id]/route.ts": 1,
     "src/app/api/providers/[id]/chatgpt-web-codex-doctor/route.ts": 1,
     "src/app/api/providers/[id]/refresh-token/route.ts": 1,
+    // #15130: the connection test re-reads the row uncached right before its write so an
+    // operator disable that landed mid-probe is honored — a state re-read of the connection
+    // under test, never a connection selection (class C).
+    "src/app/api/providers/[id]/test/route.ts": 1,
     "src/app/api/providers/bulk/route.ts": 1,
     "src/app/api/providers/client/route.ts": 1,
     "src/app/api/providers/free-onboarding/route.ts": 2,

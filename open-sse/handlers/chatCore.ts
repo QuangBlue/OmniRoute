@@ -24,10 +24,12 @@ import {
 } from "./chatCore/contextEstimation.ts";
 import {
   extractSystemRoleMessages,
+  hoistLeadingTextSystemMessages,
   relocateDirectiveOnlyMessages,
 } from "./chatCore/claudeSystemRole.ts";
 export {
   extractSystemRoleMessages,
+  hoistLeadingTextSystemMessages,
   relocateDirectiveOnlyMessages,
 } from "./chatCore/claudeSystemRole.ts";
 import { checkIdempotencyCache } from "./chatCore/idempotency.ts";
@@ -758,10 +760,10 @@ async function handleChatCoreInner({
     clientRawRequest,
     provider,
     model,
-    // NEXA fusion-idempotency fix: body.messages feeds the key digest so combo-internal
-    // sub-requests (fusion panel + judge re-enter chatCore sharing the client's headers)
-    // can never collide on the raw Idempotency-Key/x-request-id header key.
+    // NEXA fusion-idempotency fix: body.messages feeds the key digest so combo-internal sub-requests
+    // (fusion panel + judge share the client's headers) never collide on the raw header key.
     body,
+    apiKeyId: apiKeyInfo?.id ?? null,
     effectiveServiceTier,
     startTime,
     log,
@@ -2140,7 +2142,11 @@ async function handleChatCoreInner({
     ) {
       log?.info?.(
         "CONTEXT",
-        `Proactive compression triggered: ${estimatedTokens} tokens > ${threshold} threshold (${contextLimit} limit)`
+        // #14931: X is the MESSAGES-only estimate (tools are accounted
+        // separately as the threshold's reserve), unlike the full-breakdown
+        // number the final guard rejects with — state the basis so the two
+        // lines can be read side by side without a decoder ring.
+        `Proactive compression triggered: ${estimatedTokens} message tokens > ${threshold} threshold (${contextLimit} limit, tools reserve ${reservedTokens})`
       );
 
       // Adapt Responses `input[]` → messages so compressContext can run, then restore.
@@ -2167,7 +2173,7 @@ async function handleChatCoreInner({
 
         log?.info?.(
           "CONTEXT",
-          `Context compressed: ${stats.original} → ${stats.final} tokens${layersInfo}`
+          `Context compressed: ${stats.original} → ${stats.final} message tokens${layersInfo}`
         );
 
         logAuditEvent({
@@ -2504,6 +2510,10 @@ async function handleChatCoreInner({
           // messages[], but a directive-only message (content: [] +
           // output_config) at messages[0] is rejected by Anthropic. Move it past
           // the first real turn; Anthropic accepts the form at any other position.
+          // A text-bearing system message at messages[0] (e.g. the Output Styles
+          // injection) is rejected there too: hoist the leading run into the
+          // top-level `system` parameter first.
+          hoistLeadingTextSystemMessages(translatedBody);
           relocateDirectiveOnlyMessages(translatedBody);
         }
         if (Array.isArray(translatedBody.messages)) {
@@ -3273,6 +3283,20 @@ async function handleChatCoreInner({
               const res = normalizeExecutorResult(rawExecutorResult);
               trace("post_executor", { status: res?.response?.status });
 
+              // When a payload override rewrote body.model (custom-model alias →
+              // real upstream id, e.g. `gemini-3.7-flash-high` → `gemini-3.7-flash`),
+              // log and track the WIRE model so dashboards/telemetry reflect what
+              // actually shipped and Gemini rate-limit accounting uses the real id
+              // (the executor already built its URL from the same rewritten model).
+              const wireModel =
+                typeof res.model === "string" && res.model ? res.model : modelToCall;
+              if (wireModel !== modelToCall) {
+                log?.debug?.(
+                  "PAYLOAD_RULES",
+                  `Payload rules rewrote model for URL: requested=${modelToCall} wire=${wireModel}`
+                );
+              }
+
               if (
                 provider === "codex" &&
                 attemptConnectionId &&
@@ -3310,7 +3334,7 @@ async function handleChatCoreInner({
 
               // Track Gemini RPM + RPD request counts for 429 classification
               if (provider === "gemini") {
-                incrementRequestCount(modelToCall);
+                incrementRequestCount(wireModel);
               }
 
               updatePendingScope(pendingScope, {
@@ -5907,9 +5931,9 @@ async function handleChatCoreInner({
   // issue bounded retries through the normal credential path BEFORE anything is
   // exposed to the client — in particular before `onRequestSuccess` below.
   // Empty turns are stochastic upstream misses, not account faults, so no
-  // cooldown and no forced exclusion: the round-robin picker may rotate
-  // fingerprint slots opportunistically, a single slot simply replays the same
-  // account. Budget: `STREAM_RECOVERY.EMPTY_TURN_RETRY_MAX` retries, then fall
+  // cooldown: the retry prefers another allowed connection, a single slot
+  // replays itself, and a leased or pinned connection never rotates (#14715).
+  // Budget: `STREAM_RECOVERY.EMPTY_TURN_RETRY_MAX` retries, then fall
   // back to the current behavior. Translate-path streams only (mirror of the
   // empty-stream guard); flag off = byte-for-byte unchanged. Bounded reader
   // (abandon past the cap, never a full `text()` read); the original
@@ -5948,6 +5972,7 @@ async function handleChatCoreInner({
         traceId,
         log,
         getProviderCredentials,
+        routing: { leased: Boolean(managedLease), forcedConnectionId, apiKey: apiKeyInfo },
         executeProviderRequest,
         logTargetRequest: (url, headers, body) => reqLogger.logTargetRequest(url, headers, body),
         captureBody: (body) => providerRequestCapture.body(body),
