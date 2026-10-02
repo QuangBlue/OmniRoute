@@ -18,6 +18,7 @@
 import zlib from "node:zlib";
 import crypto from "node:crypto";
 import { decodeNativeTodoWriteCompletion } from "./cursorAgentProtobuf/nativeTodoWrite.ts";
+import { pushTtftBreakdown, safely, type TtftBreakdownDelta } from "./cursorAgentProtobuf/ttft.ts";
 import {
   EXTRA_EXEC_SERVER_FIELDS,
   decodeExtraExecEvent,
@@ -192,6 +193,8 @@ const ESM_WRITE_SHELL_STDIN_ARGS = 23;
 
 // Args sub-message field numbers (path and shell variants)
 const ARG_PATH = 1; // ReadArgs.path / WriteArgs.path / DeleteArgs.path / LsArgs.path
+const ARG_READ_OFFSET = 4; // ReadArgs.offset (optional int32)
+const ARG_READ_LIMIT = 5; // ReadArgs.limit (optional uint32)
 const ARG_SHELL_COMMAND = 1; // ShellArgs.command
 const ARG_SHELL_WORKING_DIR = 2; // ShellArgs.working_directory
 const ARG_SHELL_TIMEOUT = 3; // ShellArgs.timeout
@@ -673,6 +676,7 @@ export type DecodedDelta =
   | { kind: "thinking_complete" }
   | { kind: "token_delta"; tokens: number }
   | { kind: "turn_ended"; usage?: CursorTurnUsage }
+  | TtftBreakdownDelta
   | { kind: "heartbeat" }
   | { kind: "tool_call_started" }
   | { kind: "tool_call_completed" }
@@ -741,12 +745,12 @@ const INTERACTION_UPDATE_DECODERS: Partial<Record<number, InteractionUpdateDecod
       ? [{ kind: "token_delta", tokens: decodeVarintField(field.bytes, 1) }]
       : [],
   [IU_HEARTBEAT]: () => [{ kind: "heartbeat" }],
-  [IU_TURN_ENDED]: (field) => [
-    {
-      kind: "turn_ended",
-      usage: field.wireType === WT_LEN ? decodeTurnUsage(field.bytes) : undefined,
-    },
-  ],
+  [IU_TURN_ENDED]: (field) => {
+    // Usage is telemetry: a malformed body must not drop the turn_ended end signal.
+    const usage =
+      field.wireType === WT_LEN ? safely(() => decodeTurnUsage(field.bytes)) : undefined;
+    return [usage ? { kind: "turn_ended", usage } : { kind: "turn_ended" }];
+  },
 };
 
 function decodeInteractionUpdate(field: Field): DecodedDelta[] {
@@ -761,6 +765,7 @@ export function decodeAgentServerMessage(payload: Buffer): DecodedDelta[] {
       out.push({ kind: "kv_server_message" });
       continue;
     }
+    if (pushTtftBreakdown(top, out)) continue;
     if (top.fieldNumber !== ASM_INTERACTION_UPDATE || top.wireType !== 2) continue;
     for (const update of decodeFields(top.bytes)) {
       out.push(...decodeInteractionUpdate(update));
@@ -885,7 +890,16 @@ export type ExecServerEvent =
       execId: string;
       serverIdentifiers: string[];
     }
-  | { kind: "exec_read"; execMsgId: number; execId: string; path: string }
+  | {
+      kind: "exec_read";
+      execMsgId: number;
+      execId: string;
+      path: string;
+      /** ReadArgs.offset: first line to read. Absent when the model reads the whole file. */
+      offset?: number;
+      /** ReadArgs.limit: number of lines to read. */
+      limit?: number;
+    }
   | {
       kind: "exec_write";
       execMsgId: number;
@@ -1009,6 +1023,27 @@ function createPathExecEvent(kind: PathExecKind, context: ExecEventContext): Exe
   };
 }
 
+/**
+ * ReadArgs also carries an optional line range. Dropping it turns every partial
+ * read into a whole-file read, which clients such as Claude Code answer with
+ * "file unchanged" — the model then never gets the lines it asked for.
+ */
+function createReadExecEvent(context: ExecEventContext): ExecServerEvent {
+  const event = createPathExecEvent("exec_read", context) as Extract<
+    ExecServerEvent,
+    { kind: "exec_read" }
+  >;
+  for (const field of decodeFields(context.variantBytes)) {
+    if (field.wireType !== WT_VARINT) continue;
+    if (field.fieldNumber === ARG_READ_OFFSET) {
+      event.offset = Number(BigInt.asIntN(32, field.varint));
+    } else if (field.fieldNumber === ARG_READ_LIMIT) {
+      event.limit = Number(BigInt.asUintN(32, field.varint));
+    }
+  }
+  return event;
+}
+
 function createShellExecEvent(kind: ShellExecKind, context: ExecEventContext): ExecServerEvent {
   return {
     kind,
@@ -1053,7 +1088,7 @@ const EXEC_EVENT_DECODERS: Partial<Record<number, ExecEventDecoder>> = {
     execMsgId,
     execId,
   }),
-  [ESM_READ_ARGS]: (context) => createPathExecEvent("exec_read", context),
+  [ESM_READ_ARGS]: (context) => createReadExecEvent(context),
   [ESM_WRITE_ARGS]: (context) => {
     const encodingHint = decodeStringField(context.variantBytes, 6);
     const hasFileBytes = decodeFields(context.variantBytes).some(

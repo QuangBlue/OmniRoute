@@ -1203,6 +1203,8 @@
     "batchGroup": "Փաթեթային մշակում",
     "homeSubtitle": "Վահանակի ակնարկ",
     "providersSubtitle": "Կառավարել AI մատակարարներին",
+    "modelCatalog": "Մոդելների կատալոգ",
+    "modelCatalogSubtitle": "Դիտեք մոդելները բոլոր մատակարարներից",
     "quotaTrackerSubtitle": "Հետևել օգտագործման սահմանաչափերին",
     "providerQuotaSubtitle": "Հետևել մատակարարների օգտագործման սահմանաչափերին",
     "runtimeSubtitle": "Իրական ժամանակի դիմակայունություն և աշխատաշրջաններ",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "Անվճար փաթեթ ($0)",
-    "templateFreeStackDesc": "Շրջանաձև բաշխում բոլոր անվճար մատակարարների միջև՝ Kiro (Claude), Qoder (5 մոդել), Qwen (4 մոդել)։ Զրոյական արժեք, կոդավորումը երբեք չի ընդհատվում։",
+    "templateFreeStackDesc": "Շրջանաձև բաշխում բոլոր անվճար մատակարարների միջև՝ Antigravity (Gemini), Kiro (Claude), Qoder (3 մոդել), NVIDIA, Groq։ Զրոյական արժեք, կոդավորումը երբեք չի ընդհատվում։",
     "auto": "Խելացի ինքնաշխատ ռեժիմ",
     "autoDesc": "Ինքնավերականգնվող խելացի երթուղավորման խումբ՝ բազմագործոն գնահատմամբ",
     "lkgp": "LKGP ռեժիմ",
@@ -11521,6 +11523,7 @@
       "output": "Ելք",
       "totalOut": "Ընդհանուր ելք՝ {value}",
       "reasoning": "Դատողություն՝ {value}",
+      "reasoningObserved": "{value} · դիտարկվել է {chars} նիշ",
       "requestedModel": "Պահանջված մոդել",
       "requestProtocol": "Հարցման արձանագրություն",
       "cacheSource": "Քեշի աղբյուր",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "Ժառանգում է կապը՝ {host}",
     "inheritedPool": "Ժառանգում է կապերի խումբը ({count})",
     "poolEmptyBlocked": "Խումբը դատարկ է — հարցումները ձախողվում են (ոչ ուղիղ)",
-    "directEgress": "Ուղիղ (առանց պրոքսիի)"
+    "directEgress": "Ուղիղ (առանց պրոքսիի)",
+    "ownProxy": "Սեփական պրոքսի"
   },
   "gamification": {
     "leaderboardScopes": {
