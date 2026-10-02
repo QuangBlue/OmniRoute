@@ -1203,6 +1203,8 @@
     "batchGroup": "ബാച്ച്",
     "homeSubtitle": "ഡാഷ്ബോർഡ് അവലോകനം",
     "providersSubtitle": "AI പ്രൊവൈഡർമാരെ നിയന്ത്രിക്കുക",
+    "modelCatalog": "മോഡൽ കാറ്റലോഗ്",
+    "modelCatalogSubtitle": "ദാതാക്കളിലുടനീളമുള്ള മോഡലുകൾ ബ്രൗസ് ചെയ്യുക",
     "quotaTrackerSubtitle": "ഉപയോഗ പരിധികൾ ട്രാക്ക് ചെയ്യുക",
     "providerQuotaSubtitle": "പ്രൊവൈഡർ ഉപയോഗ പരിധികൾ ട്രാക്ക് ചെയ്യുക",
     "runtimeSubtitle": "തത്സമയ പ്രതിരോധശേഷിയും സെഷനുകളും",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "സൗജന്യ സ്റ്റാക്ക് ($0)",
-    "templateFreeStackDesc": "എല്ലാ സൗജന്യ പ്രൊവൈഡർമാരിലൂടെയും റൗണ്ട്-റോബിൻ ചെയ്യുക: Kiro (Claude), Qoder (5 മോഡലുകൾ), Qwen (4 മോഡലുകൾ). ചെലവ് പൂജ്യം, കോഡിംഗ് ഒരിക്കലും നിലയ്ക്കില്ല.",
+    "templateFreeStackDesc": "എല്ലാ സൗജന്യ പ്രൊവൈഡർമാരിലൂടെയും റൗണ്ട്-റോബിൻ ചെയ്യുക: Antigravity (Gemini), Kiro (Claude), Qoder (3 മോഡലുകൾ), NVIDIA, Groq. ചെലവ് പൂജ്യം, കോഡിംഗ് ഒരിക്കലും നിലയ്ക്കില്ല.",
     "auto": "ഇന്റലിജന്റ് ഓട്ടോ",
     "autoDesc": "ബഹുഘടക സ്കോറിംഗോടുകൂടിയ സ്വയം വീണ്ടെടുക്കുന്ന സ്മാർട്ട് റൂട്ടിംഗ് പൂൾ",
     "lkgp": "LKGP മോഡ്",
@@ -11521,6 +11523,7 @@
       "output": "ഔട്ട്പുട്ട്",
       "totalOut": "ആകെ ഔട്ട്പുട്ട്: {value}",
       "reasoning": "റീസണിംഗ്: {value}",
+      "reasoningObserved": "{value} · {chars} പ്രതീകങ്ങൾ കണ്ടെത്തി",
       "requestedModel": "അഭ്യർത്ഥിച്ച മോഡൽ",
       "requestProtocol": "അഭ്യർത്ഥന പ്രോട്ടോക്കോൾ",
       "cacheSource": "കാഷ് ഉറവിടം",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "കണക്ഷൻ പാരമ്പര്യമായി: {host}",
     "inheritedPool": "കണക്ഷൻ പൂൾ പാരമ്പര്യമായി ({count})",
     "poolEmptyBlocked": "പൂൾ ശൂന്യം — അഭ്യർത്ഥനകൾ പരാജയപ്പെടുന്നു (നேരിട്ടല്ല)",
-    "directEgress": "നേരിട്ട് (പ്രോക്സി ഇല്ലാതെ)"
+    "directEgress": "നേരിട്ട് (പ്രോക്സി ഇല്ലാതെ)",
+    "ownProxy": "സ്വന്തം പ്രോക്സി"
   },
   "gamification": {
     "leaderboardScopes": {

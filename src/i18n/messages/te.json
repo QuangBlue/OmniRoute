@@ -1203,6 +1203,8 @@
     "batchGroup": "బ్యాచ్",
     "homeSubtitle": "డ్యాష్బోర్డ్ అవలోకనం",
     "providersSubtitle": "AI ప్రొవైడర్లను నిర్వహించండి",
+    "modelCatalog": "మోడల్ కేటలాగ్",
+    "modelCatalogSubtitle": "ప్రొవైడర్లన్నింటిలో మోడల్‌లను బ్రౌజ్ చేయండి",
     "quotaTrackerSubtitle": "వినియోగ పరిమితులను ట్రాక్ చేయండి",
     "providerQuotaSubtitle": "ప్రొవైడర్ వినియోగ పరిమితులను ట్రాక్ చేయండి",
     "runtimeSubtitle": "రియల్టైమ్ రెసిలియన్స్ & సెషన్లు",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "ఉచిత స్టాక్ ($0)",
-    "templateFreeStackDesc": "అన్ని ఉచిత ప్రొవైడర్లలో రౌండ్-రాబిన్: Kiro (Claude), Qoder (5 మోడళ్లు), Qwen (4 మోడళ్లు). సున్నా ఖర్చు, కోడింగ్ ఎప్పటికీ ఆగదు.",
+    "templateFreeStackDesc": "అన్ని ఉచిత ప్రొవైడర్లలో రౌండ్-రాబిన్: Antigravity (Gemini), Kiro (Claude), Qoder (3 మోడళ్లు), NVIDIA, Groq. సున్నా ఖర్చు, కోడింగ్ ఎప్పటికీ ఆగదు.",
     "auto": "తెలివైన ఆటో",
     "autoDesc": "బహుళ-కారక స్కోరింగ్తో స్వీయ-పునరుద్ధరణ స్మార్ట్ రూటింగ్ పూల్",
     "lkgp": "LKGP మోడ్",
@@ -11521,6 +11523,7 @@
       "output": "అవుట్‌పుట్",
       "totalOut": "మొత్తం అవుట్: {value}",
       "reasoning": "కారణం: {value}",
+      "reasoningObserved": "{value} · {chars} అక్షరాలు గమనించబడ్డాయి",
       "requestedModel": "అభ్యర్థించిన మోడల్",
       "requestProtocol": "రిక్వెస్ట్ ప్రోటోకాల్",
       "cacheSource": "క్యాష్ మూలం",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "కనెక్షన్ వారసత్వం: {host}",
     "inheritedPool": "కనెక్షన్ పూల్ వారసత్వం ({count})",
     "poolEmptyBlocked": "పూల్ ఖాళీ — అభ్యర్థనలు విఫలమవుతాయి (ప్రత్యక్షం కాదు)",
-    "directEgress": "ప్రత్యక్షం (ప్రాక్సీ లేకుండా)"
+    "directEgress": "ప్రత్యక్షం (ప్రాక్సీ లేకుండా)",
+    "ownProxy": "సొంత ప్రాక్సీ"
   },
   "gamification": {
     "leaderboardScopes": {

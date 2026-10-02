@@ -1203,6 +1203,8 @@
     "batchGroup": "ब्याच",
     "homeSubtitle": "ड्यासबोर्ड अवलोकन",
     "providersSubtitle": "AI प्रदायकहरू व्यवस्थापन गर्नुहोस्",
+    "modelCatalog": "मोडेल सूची",
+    "modelCatalogSubtitle": "प्रदायकहरूभरिका मोडेलहरू हेर्नुहोस्",
     "quotaTrackerSubtitle": "प्रयोग सीमाहरू ट्र्याक गर्नुहोस्",
     "providerQuotaSubtitle": "प्रदायकका प्रयोग सीमाहरू ट्र्याक गर्नुहोस्",
     "runtimeSubtitle": "वास्तविक-समयको लचिलोपन र सत्रहरू",
@@ -3670,7 +3672,7 @@
       }
     },
     "templateFreeStack": "निःशुल्क स्ट्याक ($0)",
-    "templateFreeStackDesc": "सबै निःशुल्क प्रदायकहरूमा राउन्ड-रोबिन: Kiro (Claude), Qoder (5 मोडेल), Qwen (4 मोडेल)। शून्य लागत, कोडिङ कहिल्यै रोकिँदैन।",
+    "templateFreeStackDesc": "सबै निःशुल्क प्रदायकहरूमा राउन्ड-रोबिन: Antigravity (Gemini), Kiro (Claude), Qoder (3 मोडेल), NVIDIA, Groq। शून्य लागत, कोडिङ कहिल्यै रोकिँदैन।",
     "auto": "बुद्धिमान स्वचालित मोड",
     "autoDesc": "बहु-कारक स्कोरिङसहितको स्व-मर्मतकारी स्मार्ट रुटिङ पूल",
     "lkgp": "LKGP मोड",
@@ -11521,6 +11523,7 @@
       "output": "आउटपुट",
       "totalOut": "कुल आउटपुट: {value}",
       "reasoning": "तर्क: {value}",
+      "reasoningObserved": "{value} · {chars} अक्षर देखिए",
       "requestedModel": "अनुरोध गरिएको मोडेल",
       "requestProtocol": "अनुरोध प्रोटोकल",
       "cacheSource": "क्यास स्रोत",
@@ -12867,7 +12870,8 @@
     "inheritedProxy": "जडान उत्तराधिकार: {host}",
     "inheritedPool": "जडान पुल उत्तराधिकार ({count})",
     "poolEmptyBlocked": "पुल खाली — अनुरोधहरू असफल हुन्छन् (प्रत्यक्ष होइन)",
-    "directEgress": "प्रत्यक्ष (प्रोक्सी बिना)"
+    "directEgress": "प्रत्यक्ष (प्रोक्सी बिना)",
+    "ownProxy": "आफ्नै प्रोक्सी"
   },
   "gamification": {
     "leaderboardScopes": {
