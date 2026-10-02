@@ -88,6 +88,9 @@ import {
   resolveCursorEmptyTurnError,
   type ClassifiedCursorError,
 } from "./cursor/cursorErrors.ts";
+import { resolveCursorWireConversationId } from "./cursor/conversationId.ts";
+import type { CursorReportedUsage } from "../services/cursorSessionManager.ts";
+import type { CursorTtftBreakdown } from "../utils/cursorAgentProtobuf/ttft.ts";
 import { getActiveSyncedCatalog } from "../../src/lib/db/models/activeSyncedCatalog.ts";
 import {
   createNarrationStreamScrubber,
@@ -220,7 +223,15 @@ export type StreamCtx = {
   totalText: string;
   thinkingText: string;
   tokenDelta: number;
+  // Cursor's metered counts from TurnEndedUpdate (unset until turn_ended carries them).
+  // They total the whole run, including segments reported by earlier HTTP requests.
   turnUsage?: CursorTurnUsage;
+  // Usage earlier segments of this run already reported (inline tool resume).
+  priorReportedUsage: CursorReportedUsage | null;
+  // Usage this segment reported, set by buildCursorUsage.
+  reportedUsage: CursorReportedUsage | null;
+  // Cursor's server-side TTFT split (AgentServerMessage.ttft_breakdown), when sent.
+  ttftBreakdown: CursorTtftBreakdown | null;
   // End-signal tracking (Phase 8 hardens this further).
   receivedText: boolean;
   kvAfterTextSeen: boolean;
@@ -318,6 +329,9 @@ export function newStreamCtx(model: string, emit: (chunk: string) => void): Stre
     totalText: "",
     thinkingText: "",
     tokenDelta: 0,
+    priorReportedUsage: null,
+    reportedUsage: null,
+    ttftBreakdown: null,
     receivedText: false,
     kvAfterTextSeen: false,
     toolActivitySinceText: false,
@@ -391,41 +405,90 @@ export function emitCursorSseError(ctx: StreamCtx, classified: ClassifiedCursorE
 }
 
 export function buildCursorUsage(ctx: StreamCtx, body: { messages?: ChatMessage[] }) {
-  const reported = ctx.turnUsage;
-  const promptTokens =
-    reported?.inputTokens !== undefined
-      ? reported.inputTokens + (reported.cacheReadTokens ?? 0) + (reported.cacheWriteTokens ?? 0)
-      : estimateInputTokens(body);
+  const metered = ctx.turnUsage;
+  if (metered?.inputTokens !== undefined && metered.outputTokens !== undefined) {
+    // Cursor's TurnEndedUpdate `input` already includes the cache reads (live:
+    // input 56201 with cache_read 56192 on a ~57k prompt), which matches OpenAI's
+    // prompt_tokens / prompt_tokens_details.cached_tokens. It totals the whole
+    // run, so subtract what earlier tool-resume segments of the same run
+    // reported; the segments then sum to Cursor's metering.
+    const cacheRead = metered.cacheReadTokens ?? 0;
+    const cacheWrite = metered.cacheWriteTokens ?? 0;
+    const prior = ctx.priorReportedUsage ?? { prompt: 0, completion: 0, cached: 0 };
+    const runInput = Math.max(metered.inputTokens, cacheRead + cacheWrite);
+    const prompt = Math.max(0, runInput - prior.prompt);
+    const completion = Math.max(0, metered.outputTokens - prior.completion);
+    const cached = Math.min(prompt, Math.max(0, cacheRead - prior.cached));
+    ctx.reportedUsage = { prompt, completion, cached };
+    const usage: Record<string, unknown> = {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      prompt_tokens_details: {
+        cached_tokens: cached,
+        ...(cacheWrite > 0 ? { cache_creation_tokens: cacheWrite } : {}),
+      },
+    };
+    if (metered.reasoningTokens) {
+      usage.completion_tokens_details = { reasoning_tokens: metered.reasoningTokens };
+    }
+    return addBufferToUsage(usage);
+  }
+  const promptTokens = estimateInputTokens(body);
   const completionTokens =
-    reported?.outputTokens !== undefined
-      ? reported.outputTokens
-      : ctx.tokenDelta > 0
-        ? ctx.tokenDelta
-        : estimateOutputTokens(ctx.totalText.length + ctx.thinkingText.length);
+    metered?.outputTokens ??
+    (ctx.tokenDelta > 0
+      ? ctx.tokenDelta
+      : estimateOutputTokens(ctx.totalText.length + ctx.thinkingText.length));
+  ctx.reportedUsage = { prompt: promptTokens, completion: completionTokens, cached: 0 };
   const usage: Record<string, unknown> = {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: promptTokens + completionTokens,
-    ...(reported?.inputTokens === undefined || reported.outputTokens === undefined
-      ? { estimated: true }
-      : {}),
+    estimated: true,
   };
-  if (reported?.cacheReadTokens !== undefined || reported?.cacheWriteTokens !== undefined) {
+  if (metered?.cacheReadTokens !== undefined || metered?.cacheWriteTokens !== undefined) {
     usage.prompt_tokens_details = {
-      ...(reported.cacheReadTokens !== undefined
-        ? { cached_tokens: reported.cacheReadTokens }
-        : {}),
-      ...(reported.cacheWriteTokens !== undefined
-        ? { cache_creation_tokens: reported.cacheWriteTokens }
+      ...(metered.cacheReadTokens !== undefined ? { cached_tokens: metered.cacheReadTokens } : {}),
+      ...(metered.cacheWriteTokens !== undefined
+        ? { cache_creation_tokens: metered.cacheWriteTokens }
         : {}),
     };
   }
-  if (reported?.reasoningTokens !== undefined || ctx.thinkingText.length > 0) {
+  if (metered?.reasoningTokens !== undefined || ctx.thinkingText.length > 0) {
     usage.completion_tokens_details = {
-      reasoning_tokens: reported?.reasoningTokens ?? estimateOutputTokens(ctx.thinkingText.length),
+      reasoning_tokens: metered?.reasoningTokens ?? estimateOutputTokens(ctx.thinkingText.length),
     };
   }
   return addBufferToUsage(usage);
+}
+
+/**
+ * One log line per turn with Cursor's own TTFT split and metered cache usage,
+ * so a slow turn can be attributed to the router or to Cursor. Null when
+ * Cursor sent neither.
+ */
+export function formatCursorTurnMetrics(ctx: StreamCtx): string | null {
+  const t = ctx.ttftBreakdown;
+  const u = ctx.turnUsage;
+  if (!t && !u) return null;
+  const parts: string[] = [];
+  if (t) {
+    parts.push(
+      `server_first_token=${Math.round(t.serverFirstTokenMs)}ms`,
+      `provider_ttft=${Math.round(t.providerTtftMs)}ms`,
+      `pre_stream=${Math.round(t.preStreamSetupMs)}ms`,
+      `slow_pool=${Math.round(t.slowPoolWaitMs)}ms`
+    );
+  }
+  if (u) {
+    parts.push(
+      `in=${u.inputTokens ?? 0}`,
+      `cache_read=${u.cacheReadTokens ?? 0}`,
+      `out=${u.outputTokens ?? 0}`
+    );
+  }
+  return `[CURSOR] ${ctx.model} turn: ${parts.join(" ")}`;
 }
 
 function emitUsage(ctx: StreamCtx, body: { messages?: ChatMessage[] }) {
@@ -841,6 +904,9 @@ export function processFrame(
     } else if (d.kind === "turn_ended") {
       if (d.usage) ctx.turnUsage = d.usage;
       if (ctx.endReason !== "tool_calls") ctx.endReason = "turn_ended";
+    } else if (d.kind === "ttft_breakdown") {
+      const { kind: _kind, ...breakdown } = d;
+      ctx.ttftBreakdown = breakdown;
     } else if (d.kind === "unknown") {
       // Field 7 is partial_tool_call: it streams a tool call before
       // tool_call_started, and Cursor can save KV blobs in between.
@@ -1079,7 +1145,8 @@ export class CursorExecutor extends BaseExecutor {
       reasoning_effort?: unknown;
       reasoning?: { effort?: unknown };
       output_config?: { effort?: unknown };
-    }
+    },
+    wireConversationId?: string
   ): Promise<{ body: Uint8Array; blobStore: Map<string, Buffer> }> {
     const { userText, tools, reasoningEffort } = this.assembleTextAndTools(body);
     const [images, liveCatalogIds] = await Promise.all([
@@ -1092,7 +1159,7 @@ export class CursorExecutor extends BaseExecutor {
       modelId: model,
       reasoningEffort,
       userText,
-      conversationId: body.conversation_id,
+      conversationId: wireConversationId ?? body.conversation_id,
       tools,
       blobStore,
       images,
@@ -1159,7 +1226,7 @@ export class CursorExecutor extends BaseExecutor {
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, upstreamExtraHeaders }) {
+  async execute({ model, body, stream, credentials, signal, upstreamExtraHeaders, clientHeaders }) {
     const fallbackUrl = this.buildUrl();
     const executionCredentials = await this.resolveExecutionCredentials(credentials);
     if (executionCredentials instanceof Response) {
@@ -1203,6 +1270,13 @@ export class CursorExecutor extends BaseExecutor {
       typeof body.conversation_id === "string" && body.conversation_id
         ? body.conversation_id
         : crypto.randomUUID();
+    // conversationId above stays the per-request session-manager key; Cursor
+    // gets a session-stable id so it keeps the prompt cache.
+    const wireConversationId = resolveCursorWireConversationId(
+      body,
+      clientHeaders,
+      credentials?.connectionId
+    );
     const lastMessage = messages[messages.length - 1];
     // A tool follow-up is "this request carries tool results we may still owe
     // Cursor", not "the last message happens to be role:tool". The Responses
@@ -1342,7 +1416,7 @@ export class CursorExecutor extends BaseExecutor {
       // parts (base64 / remote) into inlined cursor images.
       let built;
       try {
-        built = await this.buildRequest(model, body);
+        built = await this.buildRequest(model, body, wireConversationId);
       } catch (err) {
         // Image resolution failures (invalid / oversized / SSRF-blocked) are
         // client errors — return a sanitized 400 rather than a 500.
@@ -1395,6 +1469,8 @@ export class CursorExecutor extends BaseExecutor {
     // Closure to share the post-drive lifecycle between stream/non-stream paths.
     const sessionToUse = session;
     const finishLifecycle = (ctx: StreamCtx, errored: boolean) => {
+      const turnMetrics = formatCursorTurnMetrics(ctx);
+      if (turnMetrics) console.log(turnMetrics);
       // Persist any new pendingToolCalls from this turn into the session.
       for (const [id, info] of ctx.pendingToolCalls) {
         sessionToUse.pendingToolCalls.set(id, info);
@@ -1411,6 +1487,15 @@ export class CursorExecutor extends BaseExecutor {
       if (errored || ctx.endReason !== "tool_calls" || ctx.requiresColdResume) {
         cursorSessionManager.close(sessionToUse);
       } else {
+        const prior = sessionToUse.reportedUsage;
+        const now = ctx.reportedUsage;
+        if (now) {
+          sessionToUse.reportedUsage = {
+            prompt: (prior?.prompt ?? 0) + now.prompt,
+            completion: (prior?.completion ?? 0) + now.completion,
+            cached: (prior?.cached ?? 0) + now.cached,
+          };
+        }
         cursorSessionManager.release(sessionToUse, "awaiting_tool_result");
       }
     };
@@ -1422,6 +1507,7 @@ export class CursorExecutor extends BaseExecutor {
         {
           start: async (controller) => {
             const ctx = newStreamCtx(model, (s) => controller.enqueue(enc.encode(s)));
+            ctx.priorReportedUsage = sessionToUse.reportedUsage ?? null;
             try {
               await this.driveH2(h2, ctx, mcpTools, blobStore, clientPlatform, todoHistory, signal);
               this.finalizeSseStream(ctx, body);
@@ -1463,6 +1549,7 @@ export class CursorExecutor extends BaseExecutor {
 
     // Non-streaming: drive to completion, return chat.completion JSON.
     const ctx = newStreamCtx(model, () => {});
+    ctx.priorReportedUsage = sessionToUse.reportedUsage ?? null;
     try {
       await this.driveH2(h2, ctx, mcpTools, blobStore, clientPlatform, todoHistory, signal);
     } catch (err) {
@@ -1488,9 +1575,11 @@ export class CursorExecutor extends BaseExecutor {
         transformedBody: body,
       };
     }
+    // Build first: buildCursorUsage records ctx.reportedUsage for finishLifecycle.
+    const response = this.buildResponseFromCtx(ctx, body);
     finishLifecycle(ctx, false);
     return {
-      response: this.buildResponseFromCtx(ctx, body),
+      response,
       url,
       headers,
       transformedBody: body,
