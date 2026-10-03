@@ -1288,7 +1288,7 @@ async function handleOpenAIImageGeneration({
 
   if (providerConfig.format === "xai-image") {
     const request = buildXaiImageRequest(model, body);
-    if (!request.success) return { success: false, status: 400, error: request.error };
+    if ("error" in request) return { success: false, status: 400, error: request.error };
     Object.assign(upstreamBody, request.body);
   } else if (providerConfig.format !== "agnes-image") {
     // Pass optional parameters for ordinary OpenAI-compatible providers.
