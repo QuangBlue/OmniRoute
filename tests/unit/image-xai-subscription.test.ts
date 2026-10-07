@@ -1,11 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildXaiImageRequest } from "../../open-sse/handlers/imageGeneration/providers/xaiImage.ts";
 import {
   getAllImageModels,
   getImageProvider,
   parseImageModel,
 } from "../../open-sse/config/imageRegistry.ts";
+
+process.env.DATA_DIR ??= mkdtempSync(join(tmpdir(), "omniroute-xai-images-"));
+process.env.GROK_SUBSCRIPTION_IMAGES_ENABLED = "true";
 
 const model = "grok-imagine-image-2.0";
 const prompt = "A chef preparing pho";

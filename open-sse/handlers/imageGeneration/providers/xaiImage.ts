@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isGrokSubscriptionImagesEnabled } from "../../../config/imageRegistry.ts";
 import { mapImageSize } from "../../../translator/image/sizeMapper.ts";
 
 const aspectRatio = z.enum([
@@ -66,8 +67,13 @@ export function buildXaiImageRequest(model: string, input: unknown): XaiImageReq
     if (model !== "grok-imagine-image-2.0") {
       return { success: false, error: "xAI image quality requires grok-imagine-image-2.0" };
     }
-    body.quality =
-      quality === "high" || quality === "hd" ? "medium" : quality === "standard" ? "low" : quality;
+    body.quality = isGrokSubscriptionImagesEnabled()
+      ? quality === "high" || quality === "hd"
+        ? "medium"
+        : quality === "standard"
+          ? "low"
+          : quality
+      : quality;
   }
   return { success: true, body };
 }
